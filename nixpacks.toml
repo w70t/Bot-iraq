@@ -1,0 +1,9 @@
+# nixpacks.toml - إعدادات النشر على Railway
+
+[phases.setup]
+# إضافة FFmpeg للبيئة (مطلوب لمعالجة الفيديو)
+nixPkgs = ["ffmpeg"]
+
+[start]
+# أمر تشغيل البوت
+cmd = "python bot.py"
