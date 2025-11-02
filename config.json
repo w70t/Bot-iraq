@@ -1,0 +1,63 @@
+{
+  "payments_enabled": true,
+  "animated_logos": {
+    "enabled": true,
+    "corner_rotation": true,
+    "bounce": true,
+    "slide": true,
+    "fade": true,
+    "zoom": true,
+    "static": true
+  },
+  "binance_api_key": "YOUR_BINANCE_API_KEY_HERE",
+  "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_HERE",
+  "subscription_price_usd": 3.0,
+  "instagram_payment": {
+    "username": "7kmmy",
+    "message_ar": "شكراً لاختيارك！我们urd الآفتغرام @7kmmy للدفع",
+    "message_en": "Thank you for choosing! Contact @7kmmy on Instagram for payment"
+  },
+
+  "premium_features": {
+    "large_downloads": {
+      "enabled": true,
+      "limit_mb": 50
+    },
+    "add_custom_logo": {
+      "enabled": true,
+      "logo_path": "Logo.png"
+    }
+  },
+
+  "MAX_FREE_DURATION": 300,
+  "LOGO_PATH": "Logo.png",
+  
+  "BLOCKED_DOMAINS": [
+    "pornhub.com",
+    "xvideos.com", 
+    "xnxx.com",
+    "redtube.com",
+    "youporn.com",
+    "porn.com",
+    "sex.com",
+    "tube8.com",
+    "spankbang.com",
+    "eporner.com",
+    "hqporner.com",
+    "txxx.com",
+    "xhamster.com",
+    "beeg.com",
+    "drtuber.com"
+  ],
+  
+  "ADULT_CONTENT_KEYWORDS": [
+    "porn",
+    "xxx",
+    "sex",
+    "nude",
+    "nsfw",
+    "adult",
+    "18+",
+    "erotic"
+  ]
+}
