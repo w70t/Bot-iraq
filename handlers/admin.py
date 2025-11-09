@@ -18,7 +18,7 @@ from database import (
     get_user_language,
     get_total_downloads_count
 )
-from utils import get_message, escape_markdown
+from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,13 +26,10 @@ logger = logging.getLogger(__name__)
 # حالات المحادثة
 MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE = range(4)
 
+@admin_only
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض لوحة التحكم الرئيسية"""
     user_id = update.effective_user.id
-    
-    if not is_admin(user_id):
-        await update.message.reply_text("⛔ ليس لديك صلاحيات المدير!")
-        return ConversationHandler.END
 
     # جلب حالة اللوجو
     from database import is_logo_enabled
@@ -171,17 +168,20 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # محاولة التعامل مع User ID
     else:
-        try:
-            user_id = int(user_input)
-            user_data = get_user(user_id)
-        except ValueError:
+        # التحقق من صحة معرف المستخدم
+        is_valid, validated_user_id, error_msg = validate_user_id(user_input)
+
+        if not is_valid:
             await update.message.reply_text(
-                "❌ خطأ في الإدخال!\n\n"
+                f"❌ {error_msg}\n\n"
                 "أرسل:\n"
                 "• User ID (رقم): مثال 123456789\n"
                 "• أو Username: مثال @username"
             )
             return AWAITING_USER_ID
+
+        user_id = validated_user_id
+        user_data = get_user(user_id)
         
         if not user_data:
             await update.message.reply_text(
@@ -216,12 +216,13 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """استقبال عدد الأيام وإتمام الترقية"""
-    try:
-        days = int(update.message.text.strip())
-        if days <= 0:
-            raise ValueError
-    except ValueError:
-        await update.message.reply_text("❌ عدد أيام غير صحيح! أرسل رقم موجب.")
+    days_text = update.message.text.strip()
+
+    # التحقق من صحة عدد الأيام
+    is_valid, days, error_msg = validate_days(days_text)
+
+    if not is_valid:
+        await update.message.reply_text(f"❌ {error_msg}\n\nأرسل رقم موجب (مثال: 30)")
         return AWAITING_DAYS
     
     user_id = context.user_data.get('upgrade_target_id')

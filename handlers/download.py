@@ -19,7 +19,7 @@ from database import (
 )
 from utils import (
     get_message, clean_filename, get_config, format_file_size, format_duration,
-    send_video_report, send_critical_log
+    send_video_report, send_critical_log, rate_limit, validate_url
 )
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -88,8 +88,9 @@ class DownloadProgressTracker:
                     try:
                         loop = asyncio.get_event_loop()
                         loop.create_task(self.message.edit_text(update_text))
-                    except:
-                        pass
+                    except Exception as e:
+                        # تجاهل أخطاء تحديث الرسالة (مثل message not modified)
+                        logger.debug(f"تحديث التقدم تم تجاهله: {e}")
                         
             except Exception as e:
                 logger.warning(f"خطأ في تحديث التقدم: {e}")
@@ -771,11 +772,11 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     logger.error(f"❌ فشل إرسال تقرير الفيديو: {e}")
         
         logger.info(f"✅ تم الإرسال بنجاح")
-        
+
         try:
             await processing_message.delete()
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"فشل حذف رسالة المعالجة: {e}")
         
         if not is_user_admin and not is_subscribed_user:
             increment_download_count(user_id)
@@ -800,8 +801,8 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         try:
             error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {str(e)}"
             send_critical_log(error_details, module="handlers/download.py")
-        except:
-            pass
+        except Exception as log_error:
+            logger.error(f"فشل إرسال سجل الخطأ: {log_error}")
 
         # تسجيل الإحصائيات - تحميل فاشل
         from database import record_download_attempt
@@ -811,11 +812,15 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
         try:
             await processing_message.edit_text(error_text)
-        except:
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=error_text
-            )
+        except Exception as edit_error:
+            logger.warning(f"فشل تعديل رسالة الخطأ: {edit_error}")
+            try:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=error_text
+                )
+            except Exception as send_error:
+                logger.error(f"فشل إرسال رسالة الخطأ: {send_error}")
     
     finally:
         for filepath in [new_filepath, temp_watermarked_path]:
@@ -826,6 +831,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 except Exception as e:
                     logger.error(f"❌ فشل الحذف: {e}")
 
+@rate_limit(seconds=10)
 async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج تحميل الفيديوهات - يدعم جميع المنصات"""
     user = update.message.from_user
@@ -833,9 +839,17 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     lang = get_user_language(user_id)
     user_data = get_user(user_id)
-    
+
+    # التحقق من بيانات المستخدم
     if not user_data:
         await update.message.reply_text("❌ لم يتم العثور على بياناتك. الرجاء إرسال /start")
+        return
+
+    # التحقق من صحة الرابط
+    if not validate_url(url):
+        error_msg = get_message(lang, 'invalid_url') if lang else "❌ الرابط غير صحيح. الرجاء إرسال رابط فيديو صحيح."
+        await update.message.reply_text(error_msg)
+        logger.warning(f"رابط غير صحيح من المستخدم {user_id}: {url}")
         return
 
     is_user_admin = is_admin(user_id)
