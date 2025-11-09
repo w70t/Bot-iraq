@@ -9,14 +9,6 @@
     "zoom": true,
     "static": true
   },
-  "binance_api_key": "YOUR_BINANCE_API_KEY_HERE",
-  "binance_secret_key": "YOUR_BINANCE_SECRET_KEY_HERE",
-  "subscription_price_usd": 3.0,
-  "instagram_payment": {
-    "username": "7kmmy",
-    "message_ar": "شكراً لاختيارك！我们urd الآفتغرام @7kmmy للدفع",
-    "message_en": "Thank you for choosing! Contact @7kmmy on Instagram for payment"
-  },
 
   "premium_features": {
     "large_downloads": {
