@@ -19,18 +19,25 @@ ADMIN_IDS_STR = os.getenv("ADMIN_ID", "")
 try:
     if not MONGODB_URI:
         raise ValueError("متغير البيئة MONGODB_URI غير موجود.")
-    
+
     client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
     client.server_info()
-    
+
     db = client.telegram_bot
     users_collection = db.users
-    
+
     logger.info("✅ تم الاتصال بقاعدة البيانات بنجاح.")
 except Exception as e:
     logger.error(f"!!! خطأ في الاتصال بقاعدة البيانات: {e}")
     db = None
     users_collection = None
+
+    # إرسال تقرير خطأ جسيم
+    try:
+        from utils import send_critical_log
+        send_critical_log(f"فشل الاتصال بقاعدة البيانات MongoDB: {str(e)}", module="database.py")
+    except:
+        pass
 
 def init_db():
     """التحقق من الاتصال بقاعدة البيانات"""
