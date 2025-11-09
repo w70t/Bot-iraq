@@ -92,12 +92,17 @@ def get_logo_overlay_position(position):
 
 def apply_simple_watermark(input_path, output_path, logo_path, animation_type='corner_rotation', size=150, position='top_right', opacity=0.7):
     """
-    دالة موحدة ومبسطة لإضافة اللوجو
+    دالة موحدة ومبسطة لإضافة اللوجو - محسّنة للأداء
     جميع الحركات تحترم الموضع المختار من المستخدم
-    
+
     📍 **شرح المميزات:**
     • static: ثابت تماماً في الموضع المحدد (لا يتحرك)
     • المتحركات: تتحرك حول الموضع المحدد (وسط، تحت، إلخ)
+
+    ⚡ **تحسينات الأداء:**
+    • ultrafast preset لسرعة المعالجة
+    • CRF 28 لتقليل حجم الملف
+    • معالجة أولوية منخفضة لتقليل حمل CPU
     """
     try:
         # الحصول على إحداثيات الموضع المختار
@@ -173,30 +178,59 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
             filter_complex = f"{opacity_filter};[0:v][logo]overlay={overlay_x}:{overlay_y}"
             logger.info(f"⚪ تطبيق حركة افتراضية في الموضع: {position}")
         
-        # الأمر
+        # الأمر مع تحسينات الأداء
         cmd = [
             'ffmpeg', '-y',
             '-i', input_path,
             '-i', logo_path,
             '-filter_complex', filter_complex,
-            '-c:a', 'copy',
+            '-c:a', 'copy',  # نسخ الصوت بدون إعادة ترميز
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '28',
+            '-preset', 'ultrafast',  # أسرع preset
+            '-crf', '28',  # جودة معقولة مع حجم أصغر
+            '-threads', '2',  # تحديد عدد الخيوط لتقليل استهلاك CPU
             '-movflags', '+faststart',
             '-shortest',
             output_path
         ]
-        
+
         logger.info(f"🔄 تنفيذ FFmpeg ({animation_type} في الموضع {position})")
-        
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            timeout=300,
-            cwd=os.getcwd()
-        )
+
+        # تشغيل FFmpeg مع أولوية منخفضة لتقليل استهلاك CPU
+        try:
+            import psutil
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=os.getcwd()
+            )
+
+            # تقليل أولوية العملية
+            try:
+                p = psutil.Process(process.pid)
+                p.nice(10)  # أولوية منخفضة (0-19، 19 الأدنى)
+            except Exception:
+                pass
+
+            # الانتظار حتى الانتهاء
+            stdout, stderr = process.communicate(timeout=300)
+            result = type('obj', (object,), {
+                'returncode': process.returncode,
+                'stdout': stdout,
+                'stderr': stderr
+            })()
+
+        except ImportError:
+            # إذا لم يكن psutil متاحاً، استخدم subprocess العادي
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                cwd=os.getcwd()
+            )
         
         if result.returncode != 0:
             logger.error(f"❌ FFmpeg فشل ({animation_type})")
@@ -567,6 +601,59 @@ def rate_limit(seconds: int = None):
         return wrapper
     return decorator
 
+# ==================== تخزين مؤقت لبيانات المستخدم ====================
+
+from functools import lru_cache
+from time import time
+
+# Cache لبيانات المستخدم (يتم تحديثه كل 60 ثانية)
+_user_cache = {}
+_user_cache_ttl = 60  # ثانية
+_cache_lock = threading.Lock()
+
+def get_cached_user_data(user_id: int, fetch_func):
+    """
+    الحصول على بيانات المستخدم من الذاكرة المؤقتة أو جلبها من قاعدة البيانات
+
+    Args:
+        user_id: معرف المستخدم
+        fetch_func: دالة لجلب البيانات من قاعدة البيانات
+
+    Returns:
+        بيانات المستخدم
+    """
+    current_time = time()
+
+    with _cache_lock:
+        # التحقق من وجود البيانات في الذاكرة المؤقتة
+        if user_id in _user_cache:
+            cached_data, timestamp = _user_cache[user_id]
+
+            # إذا كانت البيانات لا تزال صالحة
+            if current_time - timestamp < _user_cache_ttl:
+                return cached_data
+
+        # جلب البيانات من قاعدة البيانات
+        user_data = fetch_func(user_id)
+
+        # تخزين في الذاكرة المؤقتة
+        _user_cache[user_id] = (user_data, current_time)
+
+        return user_data
+
+def clear_user_cache(user_id: int = None):
+    """
+    مسح الذاكرة المؤقتة لمستخدم معين أو جميع المستخدمين
+
+    Args:
+        user_id: معرف المستخدم (اختياري - إذا لم يُحدد، سيتم مسح الجميع)
+    """
+    with _cache_lock:
+        if user_id:
+            _user_cache.pop(user_id, None)
+        else:
+            _user_cache.clear()
+
 # ==================== حماية الأوامر الإدارية ====================
 
 def admin_only(func):
@@ -616,6 +703,63 @@ def admin_only(func):
     return wrapper
 
 # ==================== نظام السجلات الاحترافي ====================
+
+import threading
+from datetime import datetime
+
+# عداد الأخطاء في الذاكرة
+_error_counter = {
+    'critical': 0,
+    'warning': 0,
+    'last_reset': datetime.now()
+}
+_error_lock = threading.Lock()
+
+def _increment_error_count(error_type: str):
+    """زيادة عداد الأخطاء بشكل آمن"""
+    with _error_lock:
+        _error_counter[error_type] = _error_counter.get(error_type, 0) + 1
+
+def get_error_stats() -> dict:
+    """الحصول على إحصائيات الأخطاء"""
+    with _error_lock:
+        return _error_counter.copy()
+
+def reset_error_stats():
+    """إعادة تعيين إحصائيات الأخطاء"""
+    with _error_lock:
+        _error_counter['critical'] = 0
+        _error_counter['warning'] = 0
+        _error_counter['last_reset'] = datetime.now()
+
+def _write_to_error_log(level: str, message: str, module: str):
+    """كتابة الخطأ إلى ملف السجل المحلي"""
+    try:
+        log_file = 'bot_errors.log'
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] [{level}] [{module}] {message}\n"
+
+        with open(log_file, 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+    except Exception as e:
+        logger.error(f"Failed to write to error log: {e}")
+
+def log_warning(message: str, module: str = "unknown"):
+    """
+    تسجيل تحذير محلي بدون إرسال إلى تيليجرام
+
+    Args:
+        message: رسالة التحذير
+        module: اسم الوحدة/الملف
+    """
+    # تسجيل في السجل المحلي
+    logger.warning(f"[{module}] {message}")
+
+    # كتابة إلى ملف السجل
+    _write_to_error_log("WARNING", message, module)
+
+    # زيادة العداد
+    _increment_error_count('warning')
 
 def _send_telegram_message(chat_id: str, text: str, parse_mode: str = "Markdown"):
     """إرسال رسالة إلى تيليجرام باستخدام requests"""
@@ -680,6 +824,7 @@ def _send_telegram_video(chat_id: str, video_path: str, caption: str):
 def send_critical_log(message: str, module: str = "غير محدد"):
     """
     إرسال خطأ جسيم إلى قناة السجلات + إشعار الأدمن بتنسيق احترافي.
+    استخدم هذه الدالة فقط للأخطاء الحرجة (فشل قاعدة البيانات، أعطال النظام، إلخ)
 
     Args:
         message: رسالة الخطأ
@@ -690,23 +835,30 @@ def send_critical_log(message: str, module: str = "غير محدد"):
     """
     from datetime import datetime
 
+    # كتابة إلى ملف السجل المحلي
+    _write_to_error_log("CRITICAL", message, module)
+
+    # زيادة عداد الأخطاء الحرجة
+    _increment_error_count('critical')
+
     log_channel_id = os.getenv("LOG_CHANNEL_ID")
     if not log_channel_id:
         logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم إرسال السجلات")
         return False
 
-    # تنسيق الوقت
-    timestamp = datetime.utcnow().strftime("%d-%m-%Y %H:%M")
+    # تنسيق الوقت بشكل جميل
+    timestamp = datetime.utcnow().strftime("%H:%M — %d-%m-%Y")
 
-    # بناء الرسالة بتنسيق احترافي
+    # بناء الرسالة بتنسيق احترافي محسّن
     text = (
         "🔥 *خطأ جسيم في النظام*\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"💥 *الوقت:* `{timestamp}`\n"
         f"📁 *الوحدة:* `{module}`\n"
+        f"🧩 *السبب:* خطأ غير متوقع\n"
         f"💬 *التفاصيل:* {message}\n"
+        f"🕒 *الوقت:* {timestamp}\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        "🚨 *تم إشعار الأدمن بهذا الخطأ تلقائيًا.*"
+        "🚨 *تم إشعار الأدمن تلقائياً.*"
     )
 
     # إرسال إلى قناة السجلات

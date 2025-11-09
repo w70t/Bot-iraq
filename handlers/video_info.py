@@ -7,7 +7,7 @@ import subprocess
 import json
 
 from database import get_user_language
-from utils import format_file_size, format_duration
+from utils import format_file_size, format_duration, log_warning
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
         # لا نرسل للقناة - فقط معلومات للمستخدم
 
     except Exception as e:
-        logger.error(f"❌ فشل معالجة الفيديو: {e}", exc_info=True)
+        log_warning(f"❌ فشل معالجة الفيديو: {e}", module="handlers/video_info.py")
         await processing_message.edit_text(
             "❌ فشل التحليل! عذراً، لم أتمكن من تحليل هذا الفيديو."
         )
@@ -105,4 +105,4 @@ async def handle_video_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 os.remove(file_path)
                 logger.info(f"✅ تم حذف الملف المؤقت: {file_path}")
             except Exception as delete_e:
-                logger.error(f"❌ فشل حذف الملف: {delete_e}")
+                log_warning(f"❌ فشل حذف الملف: {delete_e}", module="handlers/video_info.py")
