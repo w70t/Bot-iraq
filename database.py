@@ -25,12 +25,14 @@ try:
 
     db = client.telegram_bot
     users_collection = db.users
+    settings_collection = db.settings
 
     logger.info("✅ تم الاتصال بقاعدة البيانات بنجاح.")
 except Exception as e:
     logger.error(f"!!! خطأ في الاتصال بقاعدة البيانات: {e}")
     db = None
     users_collection = None
+    settings_collection = None
 
     # إرسال تقرير خطأ جسيم
     try:
@@ -1158,3 +1160,107 @@ def reset_performance_metrics():
     except Exception as e:
         logger.error(f"❌ فشل إعادة تعيين الإحصائيات: {e}")
         return False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Global Settings (Subscription Control) - Mission 5
+# ═══════════════════════════════════════════════════════════════
+
+def get_global_settings():
+    """جلب الإعدادات العامة للبوت"""
+    try:
+        if not settings_collection:
+            return None
+
+        settings = settings_collection.find_one({'_id': 'global_settings'})
+
+        # إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+        if not settings:
+            default_settings = {
+                '_id': 'global_settings',
+                'subscription_enabled': False,
+                'welcome_broadcast_enabled': True,
+                'last_updated': datetime.now()
+            }
+            settings_collection.insert_one(default_settings)
+            logger.info("✅ تم إنشاء الإعدادات العامة الافتراضية")
+            return default_settings
+
+        return settings
+    except Exception as e:
+        logger.error(f"❌ فشل جلب الإعدادات العامة: {e}")
+        return None
+
+
+def set_subscription_enabled(enabled: bool):
+    """تفعيل أو إيقاف نظام الاشتراك"""
+    try:
+        if not settings_collection:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'global_settings'},
+            {
+                '$set': {
+                    'subscription_enabled': enabled,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        status = "enabled" if enabled else "disabled"
+        logger.info(f"✅ نظام الاشتراك تم {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حالة الاشتراك: {e}")
+        return False
+
+
+def set_welcome_broadcast_enabled(enabled: bool):
+    """تفعيل أو إيقاف رسالة الترحيب عند تفعيل الاشتراك"""
+    try:
+        if not settings_collection:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'global_settings'},
+            {
+                '$set': {
+                    'welcome_broadcast_enabled': enabled,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        status = "enabled" if enabled else "disabled"
+        logger.info(f"✅ رسالة الترحيب تم {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حالة رسالة الترحيب: {e}")
+        return False
+
+
+def is_subscription_enabled():
+    """التحقق من حالة نظام الاشتراك"""
+    try:
+        settings = get_global_settings()
+        if not settings:
+            return False
+        return settings.get('subscription_enabled', False)
+    except Exception as e:
+        logger.error(f"❌ فشل التحقق من حالة الاشتراك: {e}")
+        return False
+
+
+def is_welcome_broadcast_enabled():
+    """التحقق من حالة رسالة الترحيب"""
+    try:
+        settings = get_global_settings()
+        if not settings:
+            return True  # الافتراضي: مفعل
+        return settings.get('welcome_broadcast_enabled', True)
+    except Exception as e:
+        logger.error(f"❌ فشل التحقق من حالة رسالة الترحيب: {e}")
+        return True
