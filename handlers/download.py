@@ -19,7 +19,8 @@ from database import (
 )
 from utils import (
     get_message, clean_filename, get_config, format_file_size, format_duration,
-    send_video_report, send_critical_log, rate_limit, validate_url
+    send_video_report, rate_limit, validate_url, log_warning,
+    get_cached_user_data, clear_user_cache
 )
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -93,7 +94,7 @@ class DownloadProgressTracker:
                         logger.debug(f"تحديث التقدم تم تجاهله: {e}")
                         
             except Exception as e:
-                logger.warning(f"خطأ في تحديث التقدم: {e}")
+                log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
     
     def _create_progress_bar(self, percentage):
         filled = int(percentage / 5)
@@ -184,7 +185,7 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, user, video_in
                 caption=log_caption[:1024]
             )
     except Exception as e:
-        logger.error(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}")
+        log_warning(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}", module="handlers/download.py")
 
 async def show_quality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, info_dict: dict):
     """عرض قائمة اختيار الجودة - مبسطة"""
@@ -452,7 +453,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     await loop.run_in_executor(None, lambda: ydl.download([url]))
                 logger.info("✅ تم تحميل المحتوى من yt-dlp")
             except Exception as e:
-                logger.error(f"❌ خطأ في تحميل الصور: {e}")
+                log_warning(f"❌ خطأ في تحميل الصور: {e}", module="handlers/download.py")
                 raise
             
             # البحث عن الصور المحملة
@@ -471,7 +472,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             
             if not image_files:
                 # محاولة بديلة: تحميل thumbnail كصورة
-                logger.warning("⚠️ لم يتم العثور على صور، محاولة تحميل thumbnail...")
+                log_warning("⚠️ لم يتم العثور على صور، محاولة تحميل thumbnail...", module="handlers/download.py")
                 thumbnail_url = info_dict.get('thumbnail')
                 if thumbnail_url:
                     try:
@@ -484,7 +485,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                             image_files.append(thumb_path)
                             logger.info("✅ تم تحميل thumbnail كصورة")
                     except Exception as e:
-                        logger.error(f"❌ فشل تحميل thumbnail: {e}")
+                        log_warning(f"❌ فشل تحميل thumbnail: {e}", module="handlers/download.py")
             
             if not image_files:
                 raise FileNotFoundError("لم يتم العثور على صور محملة")
@@ -553,7 +554,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     os.remove(img_file)
                     logger.info(f"🗑️ تم حذف: {img_file}")
                 except Exception as e:
-                    logger.error(f"❌ فشل حذف الصورة: {e}")
+                    log_warning(f"❌ فشل حذف الصورة: {e}", module="handlers/download.py")
             
             return
         
@@ -662,15 +663,15 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
         if not should_apply_logo:
             if not logo_enabled:
-                logger.warning("⚠️ اللوجو معطل من الإعدادات")
+                log_warning("⚠️ اللوجو معطل من الإعدادات", module="handlers/download.py")
             elif is_audio:
-                logger.warning("⚠️ الملف صوتي، لا يطبق لوجو")
+                log_warning("⚠️ الملف صوتي، لا يطبق لوجو", module="handlers/download.py")
             elif not is_target_user:
-                logger.warning(f"⚠️ المستخدم ليس ضمن الفئة المستهدفة: {target_group}")
+                log_warning(f"⚠️ المستخدم ليس ضمن الفئة المستهدفة: {target_group}", module="handlers/download.py")
             elif not logo_path:
-                logger.warning("⚠️ مسار اللوجو غير معرف")
+                log_warning("⚠️ مسار اللوجو غير معرف", module="handlers/download.py")
             elif not os.path.exists(logo_path):
-                logger.warning(f"⚠️ ملف اللوجو غير موجود: {logo_path}")
+                log_warning(f"⚠️ ملف اللوجو غير موجود: {logo_path}", module="handlers/download.py")
         
         if should_apply_logo:
             logger.info(f"✅ سيتم تطبيق اللوجو على الفيديو")
@@ -769,7 +770,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                         video_path=final_video_path
                     )
                 except Exception as e:
-                    logger.error(f"❌ فشل إرسال تقرير الفيديو: {e}")
+                    log_warning(f"❌ فشل إرسال تقرير الفيديو: {e}", module="handlers/download.py")
         
         logger.info(f"✅ تم الإرسال بنجاح")
 
@@ -797,12 +798,9 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     except Exception as e:
         logger.error(f"❌ خطأ: {e}", exc_info=True)
 
-        # إرسال تقرير خطأ جسيم لقناة السجلات
-        try:
-            error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {str(e)}"
-            send_critical_log(error_details, module="handlers/download.py")
-        except Exception as log_error:
-            logger.error(f"فشل إرسال سجل الخطأ: {log_error}")
+        # تسجيل خطأ التحميل محلياً (ليس خطأ جسيم)
+        error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {str(e)}"
+        log_warning(error_details, module="handlers/download.py")
 
         # تسجيل الإحصائيات - تحميل فاشل
         from database import record_download_attempt
@@ -813,14 +811,14 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         try:
             await processing_message.edit_text(error_text)
         except Exception as edit_error:
-            logger.warning(f"فشل تعديل رسالة الخطأ: {edit_error}")
+            log_warning(f"فشل تعديل رسالة الخطأ: {edit_error}", module="handlers/download.py")
             try:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text=error_text
                 )
             except Exception as send_error:
-                logger.error(f"فشل إرسال رسالة الخطأ: {send_error}")
+                log_warning(f"فشل إرسال رسالة الخطأ: {send_error}", module="handlers/download.py")
     
     finally:
         for filepath in [new_filepath, temp_watermarked_path]:
@@ -837,20 +835,33 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = user.id
     url = update.message.text.strip()
-    lang = get_user_language(user_id)
-    user_data = get_user(user_id)
+
+    # استخدام الذاكرة المؤقتة للحصول على لغة المستخدم
+    lang = get_cached_user_data(user_id, get_user_language)
+
+    # رد سريع للمستخدم - تحسين الإحساس بالاستجابة
+    processing_msg = await update.message.reply_text("⏳ جاري المعالجة...")
+
+    # جلب بيانات المستخدم مع التخزين المؤقت
+    user_data = get_cached_user_data(user_id, get_user)
 
     # التحقق من بيانات المستخدم
     if not user_data:
-        await update.message.reply_text("❌ لم يتم العثور على بياناتك. الرجاء إرسال /start")
+        await processing_msg.edit_text("❌ لم يتم العثور على بياناتك. الرجاء إرسال /start")
         return
 
     # التحقق من صحة الرابط
     if not validate_url(url):
         error_msg = get_message(lang, 'invalid_url') if lang else "❌ الرابط غير صحيح. الرجاء إرسال رابط فيديو صحيح."
-        await update.message.reply_text(error_msg)
-        logger.warning(f"رابط غير صحيح من المستخدم {user_id}: {url}")
+        await processing_msg.edit_text(error_msg)
+        log_warning(f"رابط غير صحيح من المستخدم {user_id}: {url}", module="handlers/download.py")
         return
+
+    # حذف رسالة المعالجة المبدئية
+    try:
+        await processing_msg.delete()
+    except Exception:
+        pass
 
     is_user_admin = is_admin(user_id)
     is_subscribed_user = is_subscribed(user_id)

@@ -46,6 +46,7 @@ Thumbs.db
 
 # Logs
 *.log
+bot_errors.log
 
 # Temporary files
 videos/

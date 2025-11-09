@@ -18,7 +18,7 @@ from database import (
     get_user_language,
     get_total_downloads_count
 )
-from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days
+from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days, log_warning
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -268,7 +268,7 @@ async def receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             logger.info(f"✅ تم إرسال إشعار الترقية للمستخدم {user_id}")
         except Exception as e:
-            logger.error(f"⚠️ فشل إرسال الإشعار للمستخدم {user_id}: {e}")
+            log_warning(f"⚠️ فشل إرسال الإشعار للمستخدم {user_id}: {e}", module="handlers/admin.py")
         
         del context.user_data['upgrade_target_id']
         
@@ -881,7 +881,7 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             success_count += 1
         except Exception as e:
-            logger.error(f"فشل إرسال لـ {user['user_id']}: {e}")
+            log_warning(f"فشل إرسال لـ {user['user_id']}: {e}", module="handlers/admin.py")
             failed_count += 1
     
     result_text = (
