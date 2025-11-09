@@ -36,8 +36,8 @@ except Exception as e:
     try:
         from utils import send_critical_log
         send_critical_log(f"فشل الاتصال بقاعدة البيانات MongoDB: {str(e)}", module="database.py")
-    except:
-        pass
+    except Exception as log_error:
+        logger.error(f"فشل إرسال سجل الخطأ: {log_error}")
 
 def init_db():
     """التحقق من الاتصال بقاعدة البيانات"""

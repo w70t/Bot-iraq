@@ -430,6 +430,191 @@ def clean_filename(filename):
         filename = name[:200-len(ext)] + ext
     return filename
 
+# ==================== التحقق من صحة المدخلات ====================
+
+def validate_url(url: str) -> bool:
+    """
+    التحقق من صحة الرابط
+
+    Args:
+        url: الرابط المراد التحقق منه
+
+    Returns:
+        bool: True إذا كان الرابط صحيحاً
+    """
+    import re
+
+    # نمط بسيط للتحقق من الروابط
+    url_pattern = re.compile(
+        r'^https?://'  # http:// أو https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain
+        r'localhost|'  # localhost
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP
+        r'(?::\d+)?'  # منفذ اختياري
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+
+    return bool(url_pattern.match(url))
+
+def validate_user_id(user_id_str: str) -> tuple:
+    """
+    التحقق من صحة معرف المستخدم
+
+    Args:
+        user_id_str: معرف المستخدم كنص
+
+    Returns:
+        tuple: (is_valid: bool, user_id: int or None, error_msg: str or None)
+    """
+    # محاولة التحويل إلى رقم
+    try:
+        user_id = int(user_id_str.strip())
+
+        # معرفات تيليجرام موجبة
+        if user_id <= 0:
+            return False, None, "معرف المستخدم يجب أن يكون رقماً موجباً"
+
+        # معرفات تيليجرام عادة أقل من 10 مليارات
+        if user_id > 10_000_000_000:
+            return False, None, "معرف المستخدم غير صحيح"
+
+        return True, user_id, None
+
+    except ValueError:
+        return False, None, "معرف المستخدم يجب أن يكون رقماً صحيحاً"
+
+def validate_days(days_str: str) -> tuple:
+    """
+    التحقق من صحة عدد الأيام
+
+    Args:
+        days_str: عدد الأيام كنص
+
+    Returns:
+        tuple: (is_valid: bool, days: int or None, error_msg: str or None)
+    """
+    try:
+        days = int(days_str.strip())
+
+        if days <= 0:
+            return False, None, "عدد الأيام يجب أن يكون موجباً"
+
+        if days > 3650:  # 10 سنوات كحد أقصى
+            return False, None, "عدد الأيام كبير جداً (الحد الأقصى 3650 يوم)"
+
+        return True, days, None
+
+    except ValueError:
+        return False, None, "عدد الأيام يجب أن يكون رقماً صحيحاً"
+
+# ==================== تحديد معدل الطلبات (Rate Limiting) ====================
+
+# قاموس لتتبع آخر طلب لكل مستخدم
+_user_last_request = {}
+_RATE_LIMIT_SECONDS = 10  # 10 ثواني بين كل طلب
+
+def rate_limit(seconds: int = None):
+    """
+    ديكوراتور لتحديد معدل الطلبات - يمنع المستخدم من إرسال طلبات متكررة
+
+    Args:
+        seconds: عدد الثواني المطلوبة بين كل طلب (افتراضي: 10 ثواني)
+
+    Usage:
+        @rate_limit(seconds=10)
+        async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # download code here
+    """
+    from functools import wraps
+    from time import time
+
+    limit = seconds if seconds is not None else _RATE_LIMIT_SECONDS
+
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(update, context, *args, **kwargs):
+            user_id = update.effective_user.id
+            current_time = time()
+
+            # التحقق من آخر طلب للمستخدم
+            last_request = _user_last_request.get(user_id, 0)
+            time_passed = current_time - last_request
+
+            if time_passed < limit:
+                remaining = int(limit - time_passed)
+
+                # الحصول على لغة المستخدم
+                user_lang = 'ar'
+                try:
+                    from database import get_user_language
+                    user_lang = get_user_language(user_id)
+                except:
+                    pass
+
+                if user_lang == 'ar':
+                    error_msg = f"⏱️ الرجاء الانتظار {remaining} ثانية قبل إرسال طلب جديد."
+                else:
+                    error_msg = f"⏱️ Please wait {remaining} seconds before sending a new request."
+
+                await update.message.reply_text(error_msg)
+                return None
+
+            # تحديث وقت آخر طلب
+            _user_last_request[user_id] = current_time
+
+            # تنفيذ الأمر
+            return await func(update, context, *args, **kwargs)
+
+        return wrapper
+    return decorator
+
+# ==================== حماية الأوامر الإدارية ====================
+
+def admin_only(func):
+    """
+    ديكوراتور للتحقق من صلاحيات الإدارة قبل تنفيذ الأوامر الإدارية
+
+    Usage:
+        @admin_only
+        async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            # admin code here
+    """
+    from functools import wraps
+
+    @wraps(func)
+    async def wrapper(update, context, *args, **kwargs):
+        # الحصول على معرف المستخدم
+        user_id = update.effective_user.id
+
+        # التحقق من صلاحيات الإدارة
+        from database import is_admin
+
+        if not is_admin(user_id):
+            # رسالة رفض الوصول
+            user_lang = 'ar'  # افتراضياً العربية
+            try:
+                from database import get_user_language
+                user_lang = get_user_language(user_id)
+            except:
+                pass
+
+            if user_lang == 'ar':
+                error_msg = "⛔ عذراً، هذا الأمر متاح للمشرفين فقط."
+            else:
+                error_msg = "⛔ Sorry, this command is only available for administrators."
+
+            await update.message.reply_text(error_msg)
+
+            # سجل محاولة الوصول غير المصرح بها
+            username = update.effective_user.username or update.effective_user.first_name
+            logger.warning(f"⚠️ محاولة وصول غير مصرح: المستخدم {username} ({user_id}) حاول تنفيذ {func.__name__}")
+
+            return None
+
+        # تنفيذ الأمر إذا كان المستخدم admin
+        return await func(update, context, *args, **kwargs)
+
+    return wrapper
+
 # ==================== نظام السجلات الاحترافي ====================
 
 def _send_telegram_message(chat_id: str, text: str, parse_mode: str = "Markdown"):
