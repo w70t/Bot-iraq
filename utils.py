@@ -11,6 +11,10 @@ from telegram import BotCommand, BotCommandScopeChat
 from telegram.ext import Application
 import json
 
+# ⭐ تحميل متغيرات البيئة
+from dotenv import load_dotenv
+load_dotenv()
+
 # تهيئة الرسائل والإعدادات كمتغيرات عامة
 MESSAGES = {}
 CONFIG = {}
@@ -28,12 +32,30 @@ def load_messages():
         MESSAGES = {}
 
 def load_config():
-    """يقوم بتحميل الإعدادات من ملف JSON"""
+    """يقوم بتحميل الإعدادات من ملف JSON ودمجها مع متغيرات البيئة"""
     global CONFIG
     try:
         with open('config.json', 'r', encoding='utf-8') as f:
             CONFIG = json.load(f)
         logger.info("✅ تم تحميل ملف الإعدادات بنجاح.")
+
+        # ⭐ دمج المتغيرات السرية من ملف .env
+        # إضافة بيانات Binance من متغيرات البيئة
+        CONFIG['binance_api_key'] = os.getenv('BINANCE_API_KEY', 'YOUR_BINANCE_API_KEY_HERE')
+        CONFIG['binance_secret_key'] = os.getenv('BINANCE_SECRET_KEY', 'YOUR_BINANCE_SECRET_KEY_HERE')
+
+        # إضافة معلومات الدفع عبر Instagram من متغيرات البيئة
+        CONFIG['instagram_payment'] = {
+            'username': os.getenv('INSTAGRAM_PAYMENT_USERNAME', '7kmmy'),
+            'message_ar': f"شكراً لاختيارك! تواصل عبر الإنستغرام @{os.getenv('INSTAGRAM_PAYMENT_USERNAME', '7kmmy')} للدفع",
+            'message_en': f"Thank you for choosing! Contact @{os.getenv('INSTAGRAM_PAYMENT_USERNAME', '7kmmy')} on Instagram for payment"
+        }
+
+        # إضافة سعر الاشتراك من متغيرات البيئة
+        CONFIG['subscription_price_usd'] = float(os.getenv('SUBSCRIPTION_PRICE_USD', '3.0'))
+
+        logger.info("✅ تم دمج متغيرات البيئة مع الإعدادات.")
+
     except FileNotFoundError:
         logger.error("!!! ملف config.json غير موجود. سيتم استخدام إعدادات افتراضية.")
         CONFIG = {}
