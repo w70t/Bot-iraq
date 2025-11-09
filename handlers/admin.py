@@ -16,7 +16,12 @@ from database import (
     add_subscription,
     is_admin,
     get_user_language,
-    get_total_downloads_count
+    get_total_downloads_count,
+    get_global_settings,
+    set_subscription_enabled,
+    set_welcome_broadcast_enabled,
+    is_subscription_enabled,
+    is_welcome_broadcast_enabled
 )
 from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days, log_warning
 
@@ -45,9 +50,14 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     enabled_platforms = len(allowed_platforms)
     library_status = f"{enabled_platforms}/{total_platforms} منصات"
 
+    # جلب حالة الاشتراك
+    sub_enabled = is_subscription_enabled()
+    sub_status = "✅" if sub_enabled else "🚫"
+
     keyboard = [
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
         [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
+        [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
         [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
         [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
@@ -1284,6 +1294,208 @@ async def library_reset_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     return await library_stats(update, context)
 
+# ═══════════════════════════════════════════════════════════════
+#  VIP Subscription Control Panel - Mission 5
+# ═══════════════════════════════════════════════════════════════
+
+async def show_vip_control_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة التحكم بنظام الاشتراك VIP"""
+    query = update.callback_query
+    await query.answer()
+
+    # جلب الحالة الحالية
+    sub_enabled = is_subscription_enabled()
+    welcome_enabled = is_welcome_broadcast_enabled()
+
+    # رموز الحالة
+    sub_icon = "✅ Enabled" if sub_enabled else "🚫 Disabled"
+    welcome_icon = "✅ Enabled" if welcome_enabled else "🚫 Disabled"
+
+    message_text = (
+        "💎 **لوحة التحكم بالاشتراك / Subscription Control Panel**\n\n"
+        "📊 **الحالة الحالية / Current Status:**\n"
+        f"💎 الاشتراك / Subscription: {sub_icon}\n"
+        f"💬 رسالة الترحيب / Welcome Broadcast: {welcome_icon}\n\n"
+        "اختر الإجراء المطلوب:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ تفعيل الاشتراك / Enable Subscriptions", callback_data="vip_enable_sub")],
+        [InlineKeyboardButton("❌ إيقاف الاشتراك / Disable Subscriptions", callback_data="vip_disable_sub")],
+        [InlineKeyboardButton("💬 تفعيل/إلغاء رسالة الترحيب / Toggle Welcome", callback_data="vip_toggle_welcome")],
+        [InlineKeyboardButton("📊 عرض الحالة الحالية / Show Current Status", callback_data="vip_show_status")],
+        [InlineKeyboardButton("🔙 العودة / Back", callback_data="admin_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def toggle_subscription_enabled(update: Update, context: ContextTypes.DEFAULT_TYPE, enable: bool):
+    """تفعيل أو إيقاف نظام الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    # حفظ التغيير في قاعدة البيانات
+    success = set_subscription_enabled(enable)
+
+    if not success:
+        await query.answer("❌ فشل حفظ التغيير!", show_alert=True)
+        return MAIN_MENU
+
+    # الحالة الجديدة
+    status_ar = "✅ مفعّل" if enable else "❌ معطّل"
+    status_en = "✅ Enabled" if enable else "❌ Disabled"
+
+    # إرسال تقرير إلى قناة السجلات
+    import os
+    from telegram import Bot
+
+    LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
+    admin_username = query.from_user.username or "Unknown"
+    timestamp = datetime.now().strftime("%H:%M — %d-%m-%Y")
+
+    if LOG_CHANNEL_ID:
+        try:
+            bot = context.bot
+            log_text = (
+                "🧭 *تغيير حالة نظام الاشتراك / Subscription Status Changed*\n"
+                "━━━━━━━━━━━━━━━━━━\n"
+                f"👤 المسؤول / Admin: @{admin_username}\n"
+                f"💠 الحالة الجديدة / New Status: {status_en}\n"
+                f"🕒 الوقت / Time: {timestamp}\n"
+                "━━━━━━━━━━━━━━━━━━"
+            )
+            await bot.send_message(
+                chat_id=LOG_CHANNEL_ID,
+                text=log_text,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            log_warning(f"فشل إرسال تقرير الاشتراك إلى القناة: {e}", module="handlers/admin.py")
+
+    # إرسال رسالة ترحيب لجميع المستخدمين إذا تم التفعيل
+    if enable and is_welcome_broadcast_enabled():
+        from database import get_all_users
+        all_users = get_all_users()
+        success_count = 0
+        failed_count = 0
+
+        welcome_text = (
+            "💎 *نظام الاشتراك VIP تم تفعيله! / VIP Subscription System Enabled!*\n\n"
+            "✨ ستحصل قريباً على مزايا إضافية مثل:\n"
+            "🎞️ تحميل أسرع، 💬 دعم مباشر، 🎁 هدايا خاصة\n"
+            "📢 تابع القناة الرسمية لمزيد من التفاصيل 🔗"
+        )
+
+        for user in all_users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user['user_id'],
+                    text=welcome_text,
+                    parse_mode='Markdown'
+                )
+                success_count += 1
+            except Exception as e:
+                failed_count += 1
+                log_warning(f"فشل إرسال رسالة ترحيب لـ {user['user_id']}: {e}", module="handlers/admin.py")
+
+        broadcast_result = f"\n📢 تم إرسال رسالة ترحيب: ✅ {success_count} | ❌ {failed_count}"
+    else:
+        broadcast_result = ""
+
+    # تأكيد خاص للأدمن
+    confirmation_text = (
+        "✅ *تم حفظ التغيير بنجاح! / Change saved successfully!*\n\n"
+        f"💎 الحالة الجديدة / New Status: {status_en}\n"
+        "📦 تم تحديث الإعدادات في قاعدة البيانات (MongoDB)"
+        f"{broadcast_result}"
+    )
+
+    await query.answer("✅ تم الحفظ بنجاح!", show_alert=True)
+
+    # العودة إلى لوحة VIP
+    await show_vip_control_panel(update, context)
+
+
+async def handle_vip_enable_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تفعيل الاشتراك"""
+    return await toggle_subscription_enabled(update, context, True)
+
+
+async def handle_vip_disable_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إيقاف الاشتراك"""
+    return await toggle_subscription_enabled(update, context, False)
+
+
+async def toggle_welcome_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تفعيل أو إيقاف رسالة الترحيب"""
+    query = update.callback_query
+    await query.answer()
+
+    # الحصول على الحالة الحالية
+    current_status = is_welcome_broadcast_enabled()
+    new_status = not current_status
+
+    # حفظ التغيير
+    success = set_welcome_broadcast_enabled(new_status)
+
+    if success:
+        status_text = "✅ مفعّلة / Enabled" if new_status else "❌ معطّلة / Disabled"
+        await query.answer(f"✅ رسالة الترحيب الآن: {status_text}", show_alert=True)
+    else:
+        await query.answer("❌ فشل حفظ التغيير!", show_alert=True)
+
+    # العودة إلى لوحة VIP
+    return await show_vip_control_panel(update, context)
+
+
+async def show_current_vip_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض الحالة الحالية لنظام الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_all_users
+
+    # جلب الحالة الحالية
+    sub_enabled = is_subscription_enabled()
+    welcome_enabled = is_welcome_broadcast_enabled()
+    all_users = get_all_users()
+    total_users = len(all_users)
+
+    # رموز الحالة
+    sub_icon = "✅ Enabled" if sub_enabled else "🚫 Disabled"
+    welcome_icon = "✅ Enabled" if welcome_enabled else "🚫 Disabled"
+
+    status_text = (
+        "📊 *الحالة الحالية / Current Status*\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        f"💎 الاشتراك / Subscription: {sub_icon}\n"
+        f"💬 رسالة الترحيب / Welcome: {welcome_icon}\n"
+        f"👥 عدد المستخدمين / Total Users: {total_users}\n\n"
+        f"🕒 الوقت / Time: {datetime.now().strftime('%H:%M — %d-%m-%Y')}\n"
+        "━━━━━━━━━━━━━━━━━━"
+    )
+
+    keyboard = [[InlineKeyboardButton("🔙 العودة / Back", callback_data="admin_vip_control")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        status_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
 async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """العودة للقائمة الرئيسية"""
     return await admin_panel(update, context)
@@ -1331,6 +1543,12 @@ admin_conv_handler = ConversationHandler(
             # معالجات المنصات والموافقة
             CallbackQueryHandler(handle_platform_toggle, pattern='^platform_(enable|disable)_'),
             CallbackQueryHandler(handle_approval_action, pattern='^(approve|deny)_'),
+            # معالجات VIP Control - Mission 5
+            CallbackQueryHandler(show_vip_control_panel, pattern='^admin_vip_control$'),
+            CallbackQueryHandler(handle_vip_enable_sub, pattern='^vip_enable_sub$'),
+            CallbackQueryHandler(handle_vip_disable_sub, pattern='^vip_disable_sub$'),
+            CallbackQueryHandler(toggle_welcome_broadcast, pattern='^vip_toggle_welcome$'),
+            CallbackQueryHandler(show_current_vip_status, pattern='^vip_show_status$'),
             # القائمة القديمة
             CallbackQueryHandler(list_users, pattern='^admin_list_users$'),
             CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),

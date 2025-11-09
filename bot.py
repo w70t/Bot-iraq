@@ -100,6 +100,30 @@ async def handle_vip_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         await query.message.edit_text(details_message, parse_mode='Markdown')
 
+    elif query.data == "support_binance":
+        # زر دعم Binance
+        BINANCE_WALLET = os.getenv("BINANCE_WALLET", "Contact @7kmmy for Binance wallet")
+
+        binance_message = (
+            "💰 **دعم عبر Binance / Support via Binance**\n\n"
+            "📋 **عنوان المحفظة / Wallet Address:**\n"
+            f"`{BINANCE_WALLET}`\n\n"
+            "🙏 **شكراً لدعمك! / Thank you for your support!**\n"
+            "💝 دعمك يساعد في تطوير وتحسين البوت\n"
+            "Your support helps develop and improve the bot\n\n"
+            "📸 للتأكيد أو الاستفسار:\n"
+            "For confirmation or inquiries:\n"
+            "👉 [Instagram: @7kmmy](https://www.instagram.com/7kmmy)"
+        )
+
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = [
+            [InlineKeyboardButton("📸 تواصل عبر Instagram / Contact via Instagram", url="https://www.instagram.com/7kmmy")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.message.edit_text(binance_message, reply_markup=reply_markup, parse_mode='Markdown')
+
 # إعدادات أساسية
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
@@ -154,11 +178,81 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = get_message(lang, "help_message")
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
+async def send_startup_reports(application: Application):
+    """إرسال تقارير بدء التشغيل إلى قناة السجلات والأدمن"""
+    try:
+        from database import get_all_users, is_subscription_enabled, is_welcome_broadcast_enabled
+        from datetime import datetime
+
+        # جلب البيانات
+        all_users = get_all_users()
+        total_users = len(all_users)
+        sub_enabled = is_subscription_enabled()
+        welcome_enabled = is_welcome_broadcast_enabled()
+
+        # رموز الحالة
+        sub_icon = "✅ Enabled" if sub_enabled else "🚫 Disabled"
+        welcome_icon = "✅ Enabled" if welcome_enabled else "🚫 Disabled"
+        timestamp = datetime.now().strftime("%H:%M — %d-%m-%Y")
+
+        # تقرير لقناة السجلات
+        LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
+        if LOG_CHANNEL_ID:
+            try:
+                log_text = (
+                    "🧠 *تم تشغيل البوت بنجاح / Bot Started Successfully*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    f"💎 الاشتراك / Subscription: {sub_icon}\n"
+                    f"💬 الترحيب / Welcome Broadcast: {welcome_icon}\n"
+                    f"👥 المستخدمين / Registered Users: {total_users}\n"
+                    f"🕒 الوقت / Time: {timestamp}\n"
+                    "━━━━━━━━━━━━━━━━━━"
+                )
+                await application.bot.send_message(
+                    chat_id=LOG_CHANNEL_ID,
+                    text=log_text,
+                    parse_mode='Markdown'
+                )
+                logger.info("✅ تم إرسال تقرير بدء التشغيل إلى قناة السجلات")
+            except Exception as e:
+                logger.error(f"❌ فشل إرسال تقرير بدء التشغيل إلى القناة: {e}")
+
+        # تقرير خاص للأدمن
+        ADMIN_ID = os.getenv("ADMIN_ID")
+        if ADMIN_ID:
+            try:
+                admin_report = (
+                    "🧩 *Bot System Report / تقرير النظام*\n"
+                    "━━━━━━━━━━━━━━━━━━\n"
+                    "🚀 Bot started successfully!\n"
+                    f"👥 Users: {total_users}\n"
+                    f"💎 Subscription: {sub_icon}\n"
+                    f"💬 Welcome Broadcast: {welcome_icon}\n"
+                    f"🕒 Started: {timestamp}\n"
+                    "⚡ Server: Raspberry Pi 5 (Local)\n"
+                    "━━━━━━━━━━━━━━━━━━"
+                )
+                await application.bot.send_message(
+                    chat_id=int(ADMIN_ID),
+                    text=admin_report,
+                    parse_mode='Markdown'
+                )
+                logger.info("✅ تم إرسال تقرير بدء التشغيل للأدمن")
+            except Exception as e:
+                logger.error(f"❌ فشل إرسال تقرير بدء التشغيل للأدمن: {e}")
+
+    except Exception as e:
+        logger.error(f"❌ خطأ في إرسال تقارير بدء التشغيل: {e}")
+
+
 async def post_init(application: Application):
     """يتم تنفيذه بعد تهيئة البوت"""
     logger.info("🚀 بدء إعداد قائمة الأوامر...")
     await setup_bot_menu(application.bot)
     logger.info("✅ تم إعداد قائمة الأوامر بنجاح!")
+
+    # إرسال تقارير بدء التشغيل
+    await send_startup_reports(application)
 
 def main() -> None:
     """تشغيل البوت الرئيسي"""
@@ -222,7 +316,7 @@ def main() -> None:
     
     # 6. Handler لأزرار القائمة الرئيسية
     application.add_handler(MessageHandler(
-        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|🌐 تغيير اللغة|🌐 Change Language)$"),
+        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|🎁 دعم صاحب البوت|🎁 Support the Creator|🌐 تغيير اللغة|🌐 Change Language)$"),
         handle_menu_buttons
     ))
     
@@ -235,7 +329,7 @@ def main() -> None:
     # 8. Handler للأزرار التفاعلية (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_vip_buttons,
-        pattern="^(vip_payment|contact_support|vip_details)$"
+        pattern="^(vip_payment|contact_support|vip_details|support_binance)$"
     ))
     
     # 9. Handler لأزرار نظام الإحالة (Callback Query)

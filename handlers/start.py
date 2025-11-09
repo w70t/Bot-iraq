@@ -2,7 +2,7 @@ from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardB
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 
-from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code
+from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
 from utils import get_message
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,20 +81,38 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def create_main_keyboard(lang_code: str):
     """
     إنشاء لوحة المفاتيح الرئيسية حسب اللغة
+    مع التحكم في عرض زر VIP حسب حالة الاشتراك
     """
+    # التحقق من حالة الاشتراك
+    sub_enabled = is_subscription_enabled()
+
     if lang_code == "ar":
         keyboard = [
-            ["📥 تحميل فيديو", "👤 حسابي"],
-            ["⭐ الاشتراك VIP", "❓ المساعدة"],
-            ["🌐 تغيير اللغة"]
+            ["📥 تحميل فيديو", "👤 حسابي"]
         ]
+        # إضافة زر VIP فقط إذا كان مفعلاً
+        if sub_enabled:
+            keyboard.append(["⭐ الاشتراك VIP", "❓ المساعدة"])
+        else:
+            keyboard.append(["❓ المساعدة"])
+
+        # زر الدعم دائماً موجود
+        keyboard.append(["🎁 دعم صاحب البوت"])
+        keyboard.append(["🌐 تغيير اللغة"])
     else:
         keyboard = [
-            ["📥 Download Video", "👤 My Account"],
-            ["⭐ Subscribe VIP", "❓ Help"],
-            ["🌐 Change Language"]
+            ["📥 Download Video", "👤 My Account"]
         ]
-    
+        # إضافة زر VIP فقط إذا كان مفعلاً
+        if sub_enabled:
+            keyboard.append(["⭐ Subscribe VIP", "❓ Help"])
+        else:
+            keyboard.append(["❓ Help"])
+
+        # زر الدعم دائماً موجود
+        keyboard.append(["🎁 Support the Creator"])
+        keyboard.append(["🌐 Change Language"])
+
     return keyboard
 
 async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,7 +225,34 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(subscribe_message, reply_markup=reply_markup, parse_mode='Markdown')
-    
+
+    elif text in ["🎁 دعم صاحب البوت", "🎁 Support the Creator"]:
+        import os
+
+        # رسالة الدعم
+        support_message = (
+            "💝 **شكراً على دعمك! / Thank you for your support!**\n\n"
+            "يمكنك إرسال مكافأة عبر:\n"
+            "You can send a tip via:\n\n"
+            "💰 Binance أو 📸 Instagram:\n"
+            "👉 [اضغط هنا / Click here](https://www.instagram.com/7kmmy)\n\n"
+            "🙏 دعمك يساعد في تطوير البوت\n"
+            "Your support helps develop the bot"
+        )
+
+        # إنشاء أزرار الدعم
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        BINANCE_WALLET = os.getenv("BINANCE_WALLET", "Contact @7kmmy for Binance wallet")
+
+        keyboard = [
+            [InlineKeyboardButton("💰 دعم عبر Binance / Support via Binance", callback_data="support_binance")],
+            [InlineKeyboardButton("📸 دعم عبر Instagram / Support via Instagram", url="https://www.instagram.com/7kmmy")]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(support_message, reply_markup=reply_markup, parse_mode='Markdown')
+
     elif text in ["🌐 تغيير اللغة", "🌐 Change Language"]:
         keyboard = [["العربية 🇸🇦", "English 🇬🇧"]]
         reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
