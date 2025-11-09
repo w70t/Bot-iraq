@@ -17,7 +17,10 @@ from database import (
     get_no_logo_credits,
     use_no_logo_credit
 )
-from utils import get_message, clean_filename, get_config, format_file_size, format_duration
+from utils import (
+    get_message, clean_filename, get_config, format_file_size, format_duration,
+    send_video_report, send_critical_log
+)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -749,13 +752,23 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     height=info_dict.get('height'),
                     duration=duration
                 )
-                
-                log_channel_videos_id = os.getenv("LOG_CHANNEL_ID_VIDEOS")
-                if log_channel_videos_id and sent_message:
-                    try:
-                        await sent_message.forward(chat_id=log_channel_videos_id)
-                    except Exception as e:
-                        logger.error(f"❌ فشل التوجيه: {e}")
+
+                # إرسال تقرير احترافي لقناة الفيديوهات
+                try:
+                    video_title = info_dict.get('title', 'بدون عنوان')
+                    video_size = format_file_size(os.path.getsize(final_video_path))
+                    username = user.username if user.username else user.first_name
+
+                    send_video_report(
+                        user_id=user_id,
+                        username=username,
+                        url=url,
+                        title=video_title,
+                        size=video_size,
+                        video_path=final_video_path
+                    )
+                except Exception as e:
+                    logger.error(f"❌ فشل إرسال تقرير الفيديو: {e}")
         
         logger.info(f"✅ تم الإرسال بنجاح")
         
@@ -782,13 +795,20 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
     except Exception as e:
         logger.error(f"❌ خطأ: {e}", exc_info=True)
-        
+
+        # إرسال تقرير خطأ جسيم لقناة السجلات
+        try:
+            error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {str(e)}"
+            send_critical_log(error_details, module="handlers/download.py")
+        except:
+            pass
+
         # تسجيل الإحصائيات - تحميل فاشل
         from database import record_download_attempt
         record_download_attempt(success=False, speed=0)
-        
+
         error_text = f"❌ فشل التحميل!\n\nتأكد من أن الرابط صحيح ويمكن الوصول إليه."
-        
+
         try:
             await processing_message.edit_text(error_text)
         except:

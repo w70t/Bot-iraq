@@ -429,3 +429,164 @@ def clean_filename(filename):
         name, ext = os.path.splitext(filename)
         filename = name[:200-len(ext)] + ext
     return filename
+
+# ==================== نظام السجلات الاحترافي ====================
+
+def _send_telegram_message(chat_id: str, text: str, parse_mode: str = "Markdown"):
+    """إرسال رسالة إلى تيليجرام باستخدام requests"""
+    import requests
+
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token or not chat_id:
+        return False
+
+    try:
+        api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        response = requests.post(
+            api_url,
+            data={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": False
+            },
+            timeout=10
+        )
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"❌ فشل إرسال رسالة تيليجرام: {e}")
+        return False
+
+def _send_telegram_video(chat_id: str, video_path: str, caption: str):
+    """إرسال فيديو إلى تيليجرام مع تعليق"""
+    import requests
+
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token or not chat_id or not video_path:
+        return False
+
+    try:
+        api_url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
+        data = {
+            "chat_id": chat_id,
+            "caption": caption,
+            "parse_mode": "Markdown"
+        }
+
+        # إذا كان الفيديو رابط URL
+        if video_path.startswith("http"):
+            data["video"] = video_path
+            response = requests.post(api_url, data=data, timeout=20)
+        else:
+            # إذا كان الفيديو ملف محلي
+            if not os.path.exists(video_path):
+                logger.error(f"❌ ملف الفيديو غير موجود: {video_path}")
+                return False
+
+            with open(video_path, "rb") as video_file:
+                files = {"video": video_file}
+                response = requests.post(api_url, data=data, files=files, timeout=30)
+
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"❌ فشل إرسال فيديو تيليجرام: {e}")
+        return False
+
+def send_critical_log(message: str, module: str = "غير محدد"):
+    """
+    إرسال خطأ جسيم إلى قناة السجلات + إشعار الأدمن بتنسيق احترافي.
+
+    Args:
+        message: رسالة الخطأ
+        module: اسم الوحدة/الملف الذي حدث فيه الخطأ
+
+    Returns:
+        bool: True إذا تم الإرسال بنجاح
+    """
+    from datetime import datetime
+
+    log_channel_id = os.getenv("LOG_CHANNEL_ID")
+    if not log_channel_id:
+        logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم إرسال السجلات")
+        return False
+
+    # تنسيق الوقت
+    timestamp = datetime.utcnow().strftime("%d-%m-%Y %H:%M")
+
+    # بناء الرسالة بتنسيق احترافي
+    text = (
+        "🔥 *خطأ جسيم في النظام*\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"💥 *الوقت:* `{timestamp}`\n"
+        f"📁 *الوحدة:* `{module}`\n"
+        f"💬 *التفاصيل:* {message}\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🚨 *تم إشعار الأدمن بهذا الخطأ تلقائيًا.*"
+    )
+
+    # إرسال إلى قناة السجلات
+    success = _send_telegram_message(log_channel_id, text)
+
+    # إشعار الأدمن
+    admin_id = os.getenv("ADMIN_ID", "").split(',')[0].strip()
+    if admin_id:
+        admin_text = f"🚨 *تنبيه إداري عاجل:*\n\n{text}"
+        _send_telegram_message(admin_id, admin_text)
+
+    return success
+
+def send_video_report(user_id: int, username: str, url: str, title: str,
+                     size: str = "", video_path: str = None):
+    """
+    إرسال تقرير تحميل فيديو جديد إلى قناة الفيديوهات مع الفيديو نفسه بتنسيق احترافي.
+
+    Args:
+        user_id: معرف المستخدم في تيليجرام
+        username: اسم المستخدم
+        url: رابط الفيديو الأصلي
+        title: عنوان الفيديو
+        size: حجم الفيديو (اختياري)
+        video_path: مسار الفيديو المحلي أو رابط URL (اختياري)
+
+    Returns:
+        bool: True إذا تم الإرسال بنجاح
+    """
+    from datetime import datetime
+
+    log_channel_videos = os.getenv("LOG_CHANNEL_ID_VIDEOS")
+    if not log_channel_videos:
+        logger.warning("⚠️ LOG_CHANNEL_ID_VIDEOS غير محدد، لن يتم إرسال التقارير")
+        return False
+
+    # تنسيق الوقت
+    timestamp = datetime.utcnow().strftime("%H:%M — %d-%m-%Y")
+
+    # معالجة اسم المستخدم
+    username_display = f"@{username}" if username else "بدون اسم مستخدم"
+
+    # معالجة العنوان لتجنب مشاكل Markdown
+    title_escaped = title.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+
+    # بناء الرسالة
+    text = (
+        "🎬 *تقرير تحميل فيديو جديد*\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👤 *المستخدم:* {username_display} (`{user_id}`)\n"
+        f"🔗 *الرابط:* [اضغط هنا لفتح الفيديو]({url})\n"
+        f"🏷️ *العنوان:* {title_escaped}\n"
+    )
+
+    if size:
+        text += f"📦 *الحجم:* {size}\n"
+
+    text += f"🕒 *الوقت:* {timestamp}\n"
+    text += "━━━━━━━━━━━━━━━━━━"
+
+    # إرسال الفيديو مع التقرير أو التقرير فقط
+    if video_path:
+        text += "\n🎥 *الفيديو مرفق أدناه مباشرة*"
+        success = _send_telegram_video(log_channel_videos, video_path, text)
+    else:
+        success = _send_telegram_message(log_channel_videos, text)
+
+    return success
