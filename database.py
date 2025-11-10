@@ -399,6 +399,8 @@ def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool:
         # إرسال إشعار للمُحيل
         if bot:
             try:
+                from telegram import Bot
+                bot_obj = Bot(token=bot._token)
                 # رسالة للمحيل
                 referrer_message = (
                     f"🎉 **مبروك! حصلت على إحالة جديدة!**\n\n"
@@ -407,17 +409,19 @@ def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool:
                     f"💰 رصيدك الآن: {referrer.get('no_logo_credits', 0) + 10} فيديو بدون لوجو\n\n"
                     f"🚀 استمر في المشاركة واربح المزيد!"
                 )
-                bot.send_message(chat_id=referrer_id, text=referrer_message, parse_mode='Markdown')
+                bot_obj.send_message(chat_id=referrer_id, text=referrer_message, parse_mode='Markdown')
                 logger.info(f"📤 تم إرسال إشعار للمُحيل {referrer_id}")
             except Exception as e:
                 logger.error(f"❌ فشل إرسال إشعار للمُحيل: {e}")
-        
+
         # إرسال إشعار للمُحال (الشخص الجديد)
         if bot:
             try:
+                from telegram import Bot
+                bot_obj = Bot(token=bot._token)
                 # جلب بيانات المُحيل
                 referrer_name = referrer.get('full_name', 'صديقك')
-                
+
                 # رسالة للمُحال
                 referred_message = (
                     f"🎉 **أهلاً وسهلاً!**\n\n"
@@ -430,7 +434,7 @@ def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool:
                     f"⭐ **النقاط = فيديوهات بدون لوجو مجاناً!**\n\n"
                     f"🚀 ابدأ الآن واربح نقاط غير محدودة!"
                 )
-                bot.send_message(chat_id=new_user_id, text=referred_message, parse_mode='Markdown')
+                bot_obj.send_message(chat_id=new_user_id, text=referred_message, parse_mode='Markdown')
                 logger.info(f"📤 تم إرسال رسالة ترحيب للمُحال {new_user_id}")
             except Exception as e:
                 logger.error(f"❌ فشل إرسال رسالة للمُحال: {e}")

@@ -1,4 +1,6 @@
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes,
@@ -29,6 +31,9 @@ from utils import get_message, escape_markdown, admin_only, validate_user_id, va
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ThreadPoolExecutor for async subprocess execution
+executor = ThreadPoolExecutor(max_workers=3)
 
 # حالات المحادثة
 MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE = range(4)
@@ -1264,11 +1269,15 @@ async def library_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         import subprocess
         import sys
-        
-        # تحديث yt-dlp
-        result = subprocess.run([
-            sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"
-        ], capture_output=True, text=True, timeout=300)
+
+        # تحديث yt-dlp باستخدام ThreadPoolExecutor لتجنب التجميد
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            executor,
+            lambda: subprocess.run([
+                sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"
+            ], capture_output=True, text=True, timeout=300)
+        )
         
         if result.returncode == 0:
             await query.edit_message_text(

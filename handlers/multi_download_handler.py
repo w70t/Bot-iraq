@@ -8,6 +8,7 @@ import re
 import asyncio
 import logging
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -18,6 +19,9 @@ from database import get_user_language, record_download_attempt, track_download
 from utils import log_warning, send_critical_log, log_error_to_file
 
 logger = logging.getLogger(__name__)
+
+# ThreadPoolExecutor for async subprocess execution
+executor = ThreadPoolExecutor(max_workers=5)
 
 # مجلد التحميلات
 DOWNLOAD_DIR = "downloads"
@@ -569,11 +573,16 @@ async def compress_video(input_file: str) -> Optional[str]:
             output_file
         ]
 
-        process = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=600
+        # استخدام ThreadPoolExecutor لتجنب التجميد أثناء FFmpeg
+        loop = asyncio.get_event_loop()
+        process = await loop.run_in_executor(
+            executor,
+            lambda: subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=600
+            )
         )
 
         if process.returncode == 0 and os.path.exists(output_file):
