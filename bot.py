@@ -17,7 +17,12 @@ from telegram.ext import (
 
 # استيراد المكونات
 from handlers.start import start, select_language, handle_menu_buttons
-from handlers.download import handle_download, handle_quality_selection
+from handlers.download import (
+    handle_download,
+    handle_quality_selection,
+    cancel_download,
+    handle_batch_download
+)
 from handlers.admin import admin_conv_handler
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
@@ -125,6 +130,10 @@ LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
 # باقي الكود كما هو...
 async def forward_to_log_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """إعادة توجيه الرسائل إلى قناة اللوج"""
+    # Guard against non-message updates (e.g., callback queries)
+    if not getattr(update, "message", None):
+        return
+
     if not LOG_CHANNEL_ID:
         return
 
@@ -315,7 +324,11 @@ def main() -> None:
     # 3. معلومات الحساب
     application.add_handler(CommandHandler("account", account_info))
     application.add_handler(CommandHandler("testsub", test_subscription))
-    
+
+    # 3.5. Per-user cancel download + batch YouTube download
+    application.add_handler(CommandHandler("cancel", cancel_download))
+    application.add_handler(CommandHandler("batch", handle_batch_download))
+
     # 4. Handler للفيديوهات المرسلة
     application.add_handler(MessageHandler(filters.VIDEO, handle_video_message))
     
