@@ -19,6 +19,8 @@ executor = ThreadPoolExecutor(max_workers=5)
 # ===== Per-user cancel download support =====
 ACTIVE_DOWNLOADS = {}  # user_id -> asyncio.Task
 USER_SEMAPHORE = defaultdict(lambda: asyncio.Semaphore(2))  # max 2 concurrent per user
+PLAYLISTS = {}  # user_id -> {entries: list, quality: str, progress_msg: Message}
+CANCEL_MESSAGES = {}  # user_id -> Message (for updating progress)
 
 # ===== Batch YouTube download support =====
 YOUTUBE_REGEX = re.compile(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+))')
@@ -1090,6 +1092,88 @@ async def cancel_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.effective_message.reply_text("ℹ️ لا يوجد تحميل جارٍ لحسابك حالياً.")
 
+async def cancel_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء التحميل عبر زر inline"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    task = ACTIVE_DOWNLOADS.get(user_id)
+
+    if task and not task.done():
+        task.cancel()
+        await query.edit_message_text("❌ تم إلغاء التحميل بنجاح.")
+        logger.info(f"⛔ المستخدم {user_id} ألغى التحميل عبر زر inline")
+
+        # Cleanup
+        PLAYLISTS.pop(user_id, None)
+        CANCEL_MESSAGES.pop(user_id, None)
+    else:
+        await query.answer("⚠️ لا يوجد تحميل جارٍ حالياً.", show_alert=True)
+
+def is_playlist_url(url: str) -> bool:
+    """التحقق من أن الرابط هو playlist"""
+    return 'playlist' in url.lower() or 'list=' in url.lower()
+
+async def extract_playlist_info(url: str, progress_msg, user_id: int):
+    """استخراج معلومات playlist بشكل تفاعلي"""
+    ydl_opts = {
+        'extract_flat': True,
+        'quiet': True,
+        'no_warnings': True,
+        'ignoreerrors': True
+    }
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            playlist_info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
+
+        if not playlist_info:
+            return None
+
+        entries = playlist_info.get('entries', [])
+        if not entries:
+            return None
+
+        # Filter out None entries
+        entries = [e for e in entries if e]
+        total = len(entries)
+
+        # Show interactive analysis progress
+        for i, entry in enumerate(entries[:BATCH_MAX_URLS], 1):
+            if ACTIVE_DOWNLOADS.get(user_id) and ACTIVE_DOWNLOADS[user_id].cancelled():
+                return None
+
+            title = entry.get('title', 'بدون عنوان')
+            try:
+                cancel_markup = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⛔ إلغاء التحليل", callback_data=f"cancel:{user_id}")]
+                ])
+                await progress_msg.edit_text(
+                    f"📊 جاري تحليل الفيديو {i}/{min(total, BATCH_MAX_URLS)}:\n"
+                    f"🎬 {title[:50]}...",
+                    reply_markup=cancel_markup
+                )
+            except Exception:
+                pass
+
+            await asyncio.sleep(0.3)  # Small delay for user to see progress
+
+        # Limit to BATCH_MAX_URLS
+        entries = entries[:BATCH_MAX_URLS]
+
+        return {
+            'title': playlist_info.get('title', 'Playlist'),
+            'entries': entries,
+            'total': len(entries)
+        }
+
+    except Exception as e:
+        logger.error(f"❌ خطأ في تحليل playlist: {e}")
+        return None
+
 # ===== Batch YouTube download (up to 6 links) =====
 async def handle_batch_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج تحميل دفعات من روابط YouTube (حتى 6 روابط)"""
@@ -1184,4 +1268,219 @@ async def handle_batch_download(update: Update, context: ContextTypes.DEFAULT_TY
                     ACTIVE_DOWNLOADS.pop(user_id, None)
 
     task = asyncio.create_task(_batch_download_flow(), name=f"batch_download:{user_id}")
+    ACTIVE_DOWNLOADS[user_id] = task
+
+# ===== Playlist support with interactive UI =====
+async def handle_playlist_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج تحميل playlist YouTube بشكل تفاعلي"""
+    user_id = update.effective_user.id
+    url = update.message.text.strip()
+
+    # Check if it's a playlist URL
+    if not is_playlist_url(url):
+        await update.message.reply_text("⚠️ هذا ليس رابط playlist. استخدم /batch للروابط المتعددة.")
+        return
+
+    # Check if user has an active download
+    if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
+        await update.message.reply_text("⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.")
+        return
+
+    progress_msg = await update.message.reply_text("🔍 جاري تحليل قائمة التشغيل...")
+
+    # Track task for cancellation
+    async def _playlist_analysis_flow():
+        try:
+            playlist_info = await extract_playlist_info(url, progress_msg, user_id)
+
+            if not playlist_info:
+                await progress_msg.edit_text("❌ فشل تحليل قائمة التشغيل. تأكد من أن الرابط صحيح.")
+                return
+
+            total = playlist_info['total']
+
+            # Store playlist info
+            PLAYLISTS[user_id] = {
+                'entries': playlist_info['entries'],
+                'quality': None,
+                'progress_msg': progress_msg,
+                'url': url
+            }
+
+            # Show quality selection
+            keyboard = [
+                [InlineKeyboardButton("⭐ أفضل جودة", callback_data=f"batch_quality:best:{user_id}")],
+                [InlineKeyboardButton("📱 جودة متوسطة (أسرع)", callback_data=f"batch_quality:medium:{user_id}")],
+                [InlineKeyboardButton("🎧 صوت فقط (MP3)", callback_data=f"batch_quality:audio:{user_id}")],
+                [InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")]
+            ]
+
+            await progress_msg.edit_text(
+                f"✅ تم تحليل **{total} فيديو** من قائمة التشغيل:\n"
+                f"📋 {playlist_info['title'][:50]}\n\n"
+                f"اختر الجودة المناسبة:",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+
+        except asyncio.CancelledError:
+            try:
+                await progress_msg.edit_text("❌ تم إلغاء التحليل.")
+            except Exception:
+                pass
+            raise
+        finally:
+            if ACTIVE_DOWNLOADS.get(user_id) is task:
+                ACTIVE_DOWNLOADS.pop(user_id, None)
+
+    task = asyncio.create_task(_playlist_analysis_flow(), name=f"playlist_analysis:{user_id}")
+    ACTIVE_DOWNLOADS[user_id] = task
+
+async def handle_batch_quality_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج اختيار الجودة للدفعة"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    data_parts = query.data.split(":")
+    quality = data_parts[1]
+
+    playlist_data = PLAYLISTS.get(user_id)
+    if not playlist_data:
+        await query.edit_message_text("❌ انتهت صلاحية الطلب. أرسل الرابط مرة أخرى.")
+        return
+
+    # Check if user has an active download
+    if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
+        await query.answer("⚠️ لديك تحميل جارٍ بالفعل.", show_alert=True)
+        return
+
+    entries = playlist_data['entries']
+    total = len(entries)
+
+    quality_text = {
+        'best': 'أفضل جودة',
+        'medium': 'جودة متوسطة',
+        'audio': 'صوت فقط (MP3)'
+    }.get(quality, quality)
+
+    await query.edit_message_text(
+        f"✅ تم اختيار: **{quality_text}**\n\n"
+        f"📥 جاري تحميل {total} فيديو...",
+        parse_mode="Markdown"
+    )
+
+    # Start batch download with progress tracking
+    async def _batch_download_with_progress():
+        try:
+            sem_batch = asyncio.Semaphore(PER_USER_BATCH_CONCURRENCY)
+            cancel_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⛔ إلغاء التحميل", callback_data=f"cancel:{user_id}")]
+            ])
+
+            progress_msg = await context.bot.send_message(
+                chat_id=user_id,
+                text=f"📦 بدء التحميل... 0/{total} (0%)",
+                reply_markup=cancel_markup
+            )
+
+            CANCEL_MESSAGES[user_id] = progress_msg
+
+            async def download_single_from_playlist(entry, idx):
+                async with sem_batch:
+                    if ACTIVE_DOWNLOADS.get(user_id) and ACTIVE_DOWNLOADS[user_id].cancelled():
+                        return
+
+                    try:
+                        video_url = entry.get('url')
+                        if not video_url:
+                            video_id = entry.get('id')
+                            if video_id:
+                                video_url = f"https://www.youtube.com/watch?v={video_id}"
+                            else:
+                                logger.error(f"❌ لا يمكن الحصول على رابط للفيديو {idx+1}")
+                                return
+
+                        title = entry.get('title', 'فيديو')[:30]
+
+                        # Update progress
+                        percentage = round(((idx) / total) * 100, 1)
+                        try:
+                            await progress_msg.edit_text(
+                                f"📥 تحميل الفيديو {idx}/{total} ({percentage}%)\n"
+                                f"🎬 {title}...",
+                                reply_markup=cancel_markup
+                            )
+                        except Exception:
+                            pass
+
+                        # Create a fake update object for download
+                        class FakeMessage:
+                            def __init__(self, chat_id, message_id, user):
+                                self.chat_id = chat_id
+                                self.message_id = message_id
+                                self.from_user = user
+                                self.text = video_url
+
+                            async def reply_text(self, text, **kwargs):
+                                return await context.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+
+                        class FakeUpdate:
+                            def __init__(self, chat_id, user):
+                                self.effective_chat = type('obj', (object,), {'id': chat_id})()
+                                self.effective_user = user
+                                self.message = FakeMessage(chat_id, 0, user)
+                                self.effective_message = self.message
+
+                        fake_update = FakeUpdate(user_id, query.from_user)
+
+                        # Download with selected quality
+                        ydl_opts = get_ydl_opts_for_platform(video_url, quality)
+                        ydl_opts['skip_download'] = True
+
+                        loop = asyncio.get_event_loop()
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(video_url, download=False))
+
+                        # Download the video
+                        await download_video_with_quality(fake_update, context, video_url, info_dict, quality)
+
+                    except asyncio.CancelledError:
+                        logger.info(f"⛔ تم إلغاء التحميل {idx+1}")
+                        raise
+                    except Exception as e:
+                        logger.error(f"❌ خطأ في تحميل الفيديو {idx+1}: {e}")
+
+            tasks = [asyncio.create_task(download_single_from_playlist(e, i+1)) for i, e in enumerate(entries)]
+
+            try:
+                await asyncio.gather(*tasks, return_exceptions=False)
+            except asyncio.CancelledError:
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+                raise
+
+            # Final message
+            try:
+                await progress_msg.edit_text(
+                    f"✅ اكتمل تحميل جميع الفيديوهات ({total}/{total})"
+                )
+            except Exception:
+                pass
+
+        except asyncio.CancelledError:
+            try:
+                if progress_msg:
+                    await progress_msg.edit_text("❌ تم إلغاء التحميل.")
+            except Exception:
+                pass
+            raise
+        finally:
+            PLAYLISTS.pop(user_id, None)
+            CANCEL_MESSAGES.pop(user_id, None)
+            if ACTIVE_DOWNLOADS.get(user_id) is task:
+                ACTIVE_DOWNLOADS.pop(user_id, None)
+
+    task = asyncio.create_task(_batch_download_with_progress(), name=f"batch_download:{user_id}")
     ACTIVE_DOWNLOADS[user_id] = task
