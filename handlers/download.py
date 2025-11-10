@@ -589,21 +589,22 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             else:
                 # خطأ آخر - إظهاره
                 raise
-            
-            original_filepath = ydl.prepare_filename(info_dict)
-            title = info_dict.get('title', 'video')
-            cleaned_title = clean_filename(title)
-            
-            ext = 'mp3' if is_audio else 'mp4'
-            new_filepath = os.path.join(VIDEO_PATH, f"{cleaned_title}.{ext}")
-            
-            if os.path.exists(original_filepath):
-                if os.path.exists(new_filepath) and original_filepath != new_filepath:
-                    os.remove(new_filepath)
-                os.rename(original_filepath, new_filepath)
-            
-            if not os.path.exists(new_filepath):
-                raise FileNotFoundError(f"الملف غير موجود: {new_filepath}")
+
+        # معالجة المسارات بعد التحميل الناجح
+        original_filepath = ydl.prepare_filename(info_dict)
+        title = info_dict.get('title', 'video')
+        cleaned_title = clean_filename(title)
+
+        ext = 'mp3' if is_audio else 'mp4'
+        new_filepath = os.path.join(VIDEO_PATH, f"{cleaned_title}.{ext}")
+
+        if os.path.exists(original_filepath):
+            if os.path.exists(new_filepath) and original_filepath != new_filepath:
+                os.remove(new_filepath)
+            os.rename(original_filepath, new_filepath)
+
+        if not os.path.exists(new_filepath):
+            raise FileNotFoundError(f"الملف غير موجود: {new_filepath}")
         
         logger.info(f"✅ تم التحميل: {new_filepath}")
         
@@ -717,7 +718,12 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     chat_id=update.effective_chat.id,
                     text=f"🎨 تم استخدام نقطة بدون لوجو!\n💰 الرصيد المتبقي: {no_logo_credits - 1} فيديو"
                 )
-        
+
+        # Safety check: ensure final_video_path is never None
+        if final_video_path is None:
+            final_video_path = new_filepath
+            logger.warning(f"⚠️ final_video_path was None, using new_filepath: {new_filepath}")
+
         file_size = os.path.getsize(final_video_path)
         total_mb = file_size / (1024 * 1024)
         
