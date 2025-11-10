@@ -84,8 +84,12 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     lang = get_user_language(user_id)
 
-    # مسار الصورة
-    qr_image_path = "assets/binance_qr.jpeg"
+    # مسار الصورة (استخدام مسار مطلق)
+    import os.path
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    qr_image_path = os.path.join(base_dir, "assets", "binance_qr.jpeg")
+
+    logger.info(f"Looking for QR image at: {qr_image_path}")
 
     # التحقق من وجود الصورة
     if not os.path.exists(qr_image_path):
@@ -93,8 +97,11 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ عذراً، رمز QR غير متوفر حالياً.\n"
             "Sorry, QR code is not available at the moment.\n\n"
             f"📋 يمكنك استخدام Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n"
-            f"You can use Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`"
+            f"You can use Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n\n"
+            "💡 الرجاء إضافة الصورة في: assets/binance_qr.jpeg\n"
+            "Please add the image to: assets/binance_qr.jpeg"
         )
+        logger.warning(f"QR image not found at: {qr_image_path}")
         await query.answer(error_message, show_alert=True)
         return
 
@@ -118,10 +125,14 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         # إرسال تأكيد
+        logger.info(f"QR code sent successfully to user {user_id}")
         await query.answer("✅ تم إرسال رمز QR / QR code sent!")
 
+    except FileNotFoundError as e:
+        logger.error(f"QR file not found: {e}")
+        await query.answer("❌ ملف QR غير موجود / QR file not found", show_alert=True)
     except Exception as e:
-        logger.error(f"فشل إرسال رمز QR: {e}")
+        logger.error(f"فشل إرسال رمز QR: {e}", exc_info=True)
         await query.answer("❌ حدث خطأ في إرسال رمز QR / Error sending QR code", show_alert=True)
 
 

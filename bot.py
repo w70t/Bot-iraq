@@ -23,6 +23,15 @@ from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
 from handlers.support_handler import show_support_message, show_qr_code, support_back
+from handlers.multi_download_handler import (
+    handle_multi_download,
+    show_mode_selection,
+    show_quality_selection as show_multi_quality_selection,
+    show_audio_format_selection,
+    download_videos,
+    download_audio,
+    handle_download_cancel
+)
 from utils import get_message, escape_markdown, get_config, load_config, setup_bot_menu
 from database import init_db, update_user_interaction
 
@@ -293,23 +302,53 @@ def main() -> None:
     
     # 6. Handler لأزرار القائمة الرئيسية
     application.add_handler(MessageHandler(
-        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|🎁 دعم صاحب البوت|🎁 Support the Creator|🌐 تغيير اللغة|🌐 Change Language)$"),
+        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|🎧 تحميل صوت|🎧 Download Audio|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|🎁 دعم صاحب البوت|🎁 Support the Creator|🌐 تغيير اللغة|🌐 Change Language)$"),
         handle_menu_buttons
     ))
-    
-    # 7. Handler لاختيار الجودة (Callback Query)
+
+    # 7. Multi-Download Handlers (يجب أن تكون قبل handler القديم للحصول على الأولوية)
+    # Handler لاختيار الوضع (فيديو أو صوت)
+    application.add_handler(CallbackQueryHandler(
+        show_multi_quality_selection,
+        pattern="^mode_video$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        show_audio_format_selection,
+        pattern="^mode_audio$"
+    ))
+
+    # Handler لاختيار الجودة (Multi-Download - أنماط محددة)
+    application.add_handler(CallbackQueryHandler(
+        download_videos,
+        pattern="^quality_(360|720|1080)$"
+    ))
+
+    # Handler لاختيار صيغة الصوت
+    application.add_handler(CallbackQueryHandler(
+        download_audio,
+        pattern="^audio_(mp3|m4a)$"
+    ))
+
+    # Handler لإلغاء التحميل
+    application.add_handler(CallbackQueryHandler(
+        handle_download_cancel,
+        pattern="^download_cancel$"
+    ))
+
+    # 8. Handler لاختيار الجودة - النظام القديم (Callback Query)
+    # هذا للتوافق مع النظام القديم - الأنماط العامة
     application.add_handler(CallbackQueryHandler(
         handle_quality_selection,
         pattern="^quality_"
     ))
-    
-    # 8. Handler للأزرار التفاعلية (Callback Query)
+
+    # 9. Handler للأزرار التفاعلية (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_vip_buttons,
         pattern="^(vip_payment|contact_support|vip_details)$"
     ))
 
-    # 9. Handler لأزرار الدعم (Callback Query)
+    # 10. Handler لأزرار الدعم (Callback Query)
     application.add_handler(CallbackQueryHandler(
         show_qr_code,
         pattern="^support_show_qr$"
@@ -319,16 +358,16 @@ def main() -> None:
         pattern="^support_back$"
     ))
 
-    # 10. Handler لأزرار نظام الإحالة (Callback Query)
+    # 11. Handler لأزرار نظام الإحالة (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_referral_callback,
         pattern="^(refresh_referral_stats|copy_referral_)"
     ))
 
-    # 11. Handler للوحة تحكم الأدمن
+    # 12. Handler للوحة تحكم الأدمن
     application.add_handler(admin_conv_handler)
 
-    # 12. Handler لتحميل الفيديوهات من الروابط (يجب أن يكون الأخير)
+    # 13. Handler لتحميل الفيديوهات من الروابط (يجب أن يكون الأخير)
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Regex(r"https?://\S+"),
@@ -338,6 +377,13 @@ def main() -> None:
     
     logger.info("✅ تم تسجيل جميع المعالجات بنجاح.")
     logger.info("=" * 50)
+
+    # Mission 10: جدولة التقرير اليومي
+    try:
+        from utils import setup_daily_report_job
+        setup_daily_report_job(application)
+    except Exception as e:
+        logger.error(f"❌ فشل جدولة التقرير اليومي: {e}")
 
     # تشغيل البوت
     if WEBHOOK_URL:

@@ -1264,3 +1264,227 @@ def is_welcome_broadcast_enabled():
     except Exception as e:
         logger.error(f"❌ فشل التحقق من حالة رسالة الترحيب: {e}")
         return True
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Mission 10: Download Tracking & Admin Logs
+# ═══════════════════════════════════════════════════════════════
+
+# إنشاء مجموعة التحميلات
+try:
+    downloads_collection = db.downloads if db else None
+except Exception as e:
+    logger.error(f"❌ فشل إنشاء مجموعة التحميلات: {e}")
+    downloads_collection = None
+
+
+def track_download(
+    user_id: int,
+    platform: str,
+    mode: str,
+    quality: str = None,
+    format: str = None,
+    status: str = 'completed',
+    url: str = None,
+    file_size: int = 0,
+    error_msg: str = None
+):
+    """
+    تتبع تحميل مفصل
+
+    Args:
+        user_id: معرف المستخدم
+        platform: المنصة (youtube/instagram/facebook)
+        mode: الوضع (video/audio)
+        quality: الجودة (360/720/1080) للفيديو
+        format: الصيغة (mp3/m4a) للصوت
+        status: الحالة (completed/canceled/failed)
+        url: رابط التحميل
+        file_size: حجم الملف بالبايت
+        error_msg: رسالة الخطأ إن وجدت
+    """
+    try:
+        if not downloads_collection:
+            logger.warning("⚠️ مجموعة التحميلات غير متاحة")
+            return False
+
+        download_data = {
+            'user_id': user_id,
+            'platform': platform,
+            'mode': mode,
+            'quality': quality,
+            'format': format,
+            'status': status,
+            'url': url,
+            'file_size': file_size,
+            'error_msg': error_msg,
+            'timestamp': datetime.now(),
+            'date': datetime.now().date()
+        }
+
+        downloads_collection.insert_one(download_data)
+
+        # تحديث عداد التحميلات للمستخدم
+        increment_download_count(user_id)
+
+        logger.info(f"✅ تم تتبع التحميل: {user_id} - {platform} - {mode} - {status}")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ فشل تتبع التحميل: {e}")
+        return False
+
+
+def get_user_downloads(user_id: int, limit: int = 50):
+    """جلب سجل تحميلات المستخدم"""
+    try:
+        if not downloads_collection:
+            return []
+
+        downloads = list(downloads_collection.find(
+            {'user_id': user_id}
+        ).sort('timestamp', -1).limit(limit))
+
+        return downloads
+    except Exception as e:
+        logger.error(f"❌ فشل جلب تحميلات المستخدم: {e}")
+        return []
+
+
+def get_download_stats(start_date=None, end_date=None):
+    """
+    جلب إحصائيات التحميلات للأدمن
+
+    Args:
+        start_date: تاريخ البداية (datetime)
+        end_date: تاريخ النهاية (datetime)
+
+    Returns:
+        dict: إحصائيات التحميلات
+    """
+    try:
+        if not downloads_collection:
+            return {}
+
+        # تحديد نطاق التاريخ
+        query = {}
+        if start_date or end_date:
+            query['timestamp'] = {}
+            if start_date:
+                query['timestamp']['$gte'] = start_date
+            if end_date:
+                query['timestamp']['$lte'] = end_date
+
+        # جلب جميع التحميلات في النطاق
+        downloads = list(downloads_collection.find(query))
+
+        # حساب الإحصائيات
+        total_downloads = len(downloads)
+        completed = len([d for d in downloads if d.get('status') == 'completed'])
+        canceled = len([d for d in downloads if d.get('status') == 'canceled'])
+        failed = len([d for d in downloads if d.get('status') == 'failed'])
+
+        # إحصائيات حسب الوضع
+        video_downloads = len([d for d in downloads if d.get('mode') == 'video'])
+        audio_downloads = len([d for d in downloads if d.get('mode') == 'audio'])
+
+        # إحصائيات حسب المنصة
+        platforms = {}
+        for download in downloads:
+            platform = download.get('platform', 'unknown')
+            platforms[platform] = platforms.get(platform, 0) + 1
+
+        # أعلى المستخدمين تحميلاً
+        user_downloads = {}
+        for download in downloads:
+            user_id = download.get('user_id')
+            if user_id:
+                user_downloads[user_id] = user_downloads.get(user_id, 0) + 1
+
+        top_users = sorted(user_downloads.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        stats = {
+            'total_downloads': total_downloads,
+            'completed': completed,
+            'canceled': canceled,
+            'failed': failed,
+            'video_downloads': video_downloads,
+            'audio_downloads': audio_downloads,
+            'platforms': platforms,
+            'top_users': top_users,
+            'success_rate': (completed / total_downloads * 100) if total_downloads > 0 else 0
+        }
+
+        return stats
+
+    except Exception as e:
+        logger.error(f"❌ فشل جلب إحصائيات التحميلات: {e}")
+        return {}
+
+
+def get_daily_download_stats():
+    """جلب إحصائيات التحميلات اليومية"""
+    try:
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = datetime.now()
+
+        return get_download_stats(start_date=today_start, end_date=today_end)
+    except Exception as e:
+        logger.error(f"❌ فشل جلب إحصائيات اليوم: {e}")
+        return {}
+
+
+def generate_daily_report():
+    """
+    توليد تقرير يومي شامل
+
+    Returns:
+        str: نص التقرير بصيغة Markdown
+    """
+    try:
+        stats = get_daily_download_stats()
+
+        if not stats or stats.get('total_downloads', 0) == 0:
+            return (
+                "📊 **تقرير يومي - Daily Report**\n\n"
+                f"📅 التاريخ / Date: {datetime.now().strftime('%Y-%m-%d')}\n\n"
+                "ℹ️ لا توجد تحميلات اليوم\n"
+                "No downloads today"
+            )
+
+        # بناء التقرير
+        report = (
+            "📊 **تقرير التحميلات اليومي / Daily Downloads Report**\n"
+            "═════════════════════════════════════\n\n"
+            f"📅 **التاريخ / Date:** {datetime.now().strftime('%Y-%m-%d')}\n\n"
+            f"📥 **إجمالي التحميلات / Total Downloads:** {stats['total_downloads']}\n"
+            f"✅ **مكتملة / Completed:** {stats['completed']}\n"
+            f"❌ **ملغاة / Canceled:** {stats['canceled']}\n"
+            f"⚠️ **فاشلة / Failed:** {stats['failed']}\n"
+            f"📈 **معدل النجاح / Success Rate:** {stats['success_rate']:.1f}%\n\n"
+            "─────────────────────────────────────\n\n"
+            f"🎬 **تحميلات فيديو / Video Downloads:** {stats['video_downloads']}\n"
+            f"🎧 **تحميلات صوت / Audio Downloads:** {stats['audio_downloads']}\n\n"
+            "─────────────────────────────────────\n\n"
+            "🌐 **المنصات / Platforms:**\n"
+        )
+
+        # إضافة إحصائيات المنصات
+        for platform, count in stats['platforms'].items():
+            report += f"   • {platform.capitalize()}: {count}\n"
+
+        # إضافة أعلى المستخدمين
+        if stats['top_users']:
+            report += "\n─────────────────────────────────────\n\n"
+            report += "👥 **أعلى المستخدمين / Top Users:**\n"
+            for idx, (user_id, count) in enumerate(stats['top_users'][:5], 1):
+                report += f"   {idx}. User {user_id}: {count} downloads\n"
+
+        report += "\n═════════════════════════════════════\n"
+        report += f"⏰ **وقت التقرير / Report Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+
+        return report
+
+    except Exception as e:
+        logger.error(f"❌ فشل توليد التقرير اليومي: {e}")
+        return "❌ فشل توليد التقرير / Failed to generate report"
