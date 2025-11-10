@@ -5,6 +5,7 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import yt_dlp
+from yt_dlp.utils import DownloadError
 import logging
 
 from database import (
@@ -275,6 +276,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         'http_chunk_size': 10485760,
         'buffersize': 1024 * 512,
     }
+
+    # دعم ملف cookies.txt إذا كان موجوداً
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
+        logger.info("✅ Using cookies.txt for authentication")
     
     # ⭐ إعدادات خاصة لـ Pinterest - حل مشاكل التحميل
     if is_pinterest:
@@ -560,12 +566,29 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
         # إذا كان فيديو عادي - الكود القديم
         loop = asyncio.get_event_loop()
-        
+
         progress_tracker = DownloadProgressTracker(processing_message, lang)
         ydl_opts['progress_hooks'] = [progress_tracker.progress_hook]
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            await loop.run_in_executor(None, lambda: ydl.download([url]))
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                await loop.run_in_executor(None, lambda: ydl.download([url]))
+        except DownloadError as e:
+            error_msg = str(e).lower()
+            # التعامل مع أخطاء تسجيل الدخول للمحتوى الخاص
+            if "log in" in error_msg or "login" in error_msg or "private" in error_msg or "members only" in error_msg:
+                await processing_message.edit_text(
+                    "❌ **لا يمكن تحميل هذا المحتوى**\n"
+                    "Cannot download this content\n\n"
+                    "🔒 هذا المحتوى خاص أو يتطلب تسجيل دخول\n"
+                    "This content is private or requires login\n\n"
+                    "💡 يمكنك إضافة ملف cookies.txt لتحميل المحتوى الخاص\n"
+                    "You can add cookies.txt file to download private content"
+                )
+                return
+            else:
+                # خطأ آخر - إظهاره
+                raise
             
             original_filepath = ydl.prepare_filename(info_dict)
             title = info_dict.get('title', 'video')

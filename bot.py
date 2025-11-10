@@ -245,7 +245,26 @@ def main() -> None:
     logger.info("=" * 50)
     logger.info("🤖 بدء تشغيل البوت...")
     logger.info("=" * 50)
-    
+
+    # تحديث yt-dlp تلقائياً لتجنب مشاكل nsig
+    try:
+        import subprocess
+        logger.info("🔄 Updating yt-dlp...")
+        result = subprocess.run(
+            ["yt-dlp", "-U"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=30
+        )
+        if result.returncode == 0:
+            logger.info("✅ yt-dlp updated successfully")
+        else:
+            logger.warning("⚠️ yt-dlp update returned non-zero code (might already be latest)")
+    except subprocess.TimeoutExpired:
+        logger.warning("⚠️ yt-dlp update timed out - continuing anyway")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not update yt-dlp: {e} - continuing anyway")
+
     # تحميل الإعدادات
     load_config()
     config = get_config()

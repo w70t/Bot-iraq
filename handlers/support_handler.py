@@ -114,6 +114,7 @@ def create_placeholder_qr(qr_image_path: str) -> bool:
 async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     إرسال رمز QR الخاص بـ Binance Pay
+    يدعم عدة صيغ للصورة: .jpeg, .JPG, .jpg, .png
     """
     query = update.callback_query
     await query.answer()
@@ -124,16 +125,26 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # مسار الصورة (استخدام مسار مطلق)
     import os.path
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    qr_image_path = os.path.join(base_dir, "assets", "binance_qr.jpeg")
+    assets_dir = os.path.join(base_dir, "assets")
 
-    logger.info(f"Looking for QR image at: {qr_image_path}")
+    # البحث عن صورة QR بأي من الامتدادات المدعومة
+    qr_extensions = ['jpeg', 'JPG', 'jpg', 'png', 'JPEG', 'PNG']
+    qr_image_path = None
 
-    # التحقق من وجود الصورة - إنشاء placeholder إذا لم تكن موجودة
-    if not os.path.exists(qr_image_path):
-        logger.warning(f"QR image not found at: {qr_image_path}")
+    for ext in qr_extensions:
+        potential_path = os.path.join(assets_dir, f"binance_qr.{ext}")
+        if os.path.exists(potential_path):
+            qr_image_path = potential_path
+            logger.info(f"✅ Found QR image at: {qr_image_path}")
+            break
+
+    # إذا لم يتم العثور على الصورة
+    if not qr_image_path:
+        logger.warning(f"QR image not found in {assets_dir}. Tried extensions: {qr_extensions}")
 
         # محاولة إنشاء placeholder
-        if not create_placeholder_qr(qr_image_path):
+        placeholder_path = os.path.join(assets_dir, "binance_qr.jpeg")
+        if not create_placeholder_qr(placeholder_path):
             # فشل إنشاء placeholder - إرسال رسالة نصية فقط
             await query.answer("❌ QR image missing", show_alert=True)
 
@@ -150,6 +161,8 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='Markdown'
             )
             return
+        else:
+            qr_image_path = placeholder_path
 
     # رسالة مرفقة مع الصورة
     caption = (
