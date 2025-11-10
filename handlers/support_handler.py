@@ -1,0 +1,156 @@
+"""
+معالج نظام الدعم (Support Creator System)
+يعرض معلومات الدعم عبر Binance و Instagram
+"""
+
+import os
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+from database import get_user_language
+
+logger = logging.getLogger(__name__)
+
+async def show_support_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    عرض رسالة الدعم الرئيسية مع خيارات الدفع
+    """
+    user_id = update.effective_user.id
+    lang = get_user_language(user_id)
+
+    # معرف الدفع Binance
+    BINANCE_WALLET = os.getenv("BINANCE_WALLET", "86847466")
+
+    # الرسالة الثنائية اللغة
+    support_message = (
+        "💝 **شكراً على دعمك! / Thank you for your support!**\n\n"
+        "════════════════════\n\n"
+        "يمكنك دعم تطوير البوت عبر:\n"
+        "You can support the bot development via:\n\n"
+        "💰 **Binance Pay**\n"
+        f"📋 Pay ID: `{BINANCE_WALLET}`\n\n"
+        "📸 **Instagram**\n"
+        "👤 Username: @7kmmy\n"
+        "🔗 [instagram.com/7kmmy](https://instagram.com/7kmmy)\n\n"
+        "════════════════════\n\n"
+        "🙏 دعمك يساعدنا في:\n"
+        "Your support helps us:\n\n"
+        "✨ تطوير مزايا جديدة / Add new features\n"
+        "⚡ تحسين الأداء / Improve performance\n"
+        "🛡️ تقديم دعم أفضل / Provide better support\n\n"
+        "💖 شكراً لكونك جزءاً من مجتمعنا!\n"
+        "Thank you for being part of our community!"
+    )
+
+    # إنشاء الأزرار
+    keyboard = [
+        [InlineKeyboardButton("📱 عرض رمز QR / Show QR Code", callback_data="support_show_qr")],
+        [InlineKeyboardButton("🌐 فتح Instagram / Open Instagram", url="https://instagram.com/7kmmy")],
+        [InlineKeyboardButton("🔙 العودة / Back", callback_data="support_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # إرسال أو تعديل الرسالة
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+
+        # فحص إذا كانت الرسالة مختلفة قبل التعديل
+        if query.message.text != support_message:
+            await query.edit_message_text(
+                text=support_message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown',
+                disable_web_page_preview=True
+            )
+    else:
+        await update.message.reply_text(
+            support_message,
+            reply_markup=reply_markup,
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+
+
+async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    إرسال رمز QR الخاص بـ Binance Pay
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    lang = get_user_language(user_id)
+
+    # مسار الصورة
+    qr_image_path = "assets/binance_qr.jpeg"
+
+    # التحقق من وجود الصورة
+    if not os.path.exists(qr_image_path):
+        error_message = (
+            "❌ عذراً، رمز QR غير متوفر حالياً.\n"
+            "Sorry, QR code is not available at the moment.\n\n"
+            f"📋 يمكنك استخدام Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n"
+            f"You can use Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`"
+        )
+        await query.answer(error_message, show_alert=True)
+        return
+
+    # رسالة مرفقة مع الصورة
+    caption = (
+        "💰 **Binance Pay QR Code**\n\n"
+        f"📋 Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n\n"
+        "📸 امسح الرمز من تطبيق Binance\n"
+        "Scan the code from Binance app\n\n"
+        "🙏 شكراً لدعمك! / Thank you for your support!"
+    )
+
+    try:
+        # إرسال الصورة
+        with open(qr_image_path, 'rb') as photo:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo,
+                caption=caption,
+                parse_mode='Markdown'
+            )
+
+        # إرسال تأكيد
+        await query.answer("✅ تم إرسال رمز QR / QR code sent!")
+
+    except Exception as e:
+        logger.error(f"فشل إرسال رمز QR: {e}")
+        await query.answer("❌ حدث خطأ في إرسال رمز QR / Error sending QR code", show_alert=True)
+
+
+async def support_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    العودة إلى القائمة الرئيسية
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    lang = get_user_language(user_id)
+
+    # رسالة العودة
+    back_message = (
+        "✅ تم العودة للقائمة الرئيسية\n"
+        "Returned to main menu"
+    ) if lang == "ar" else (
+        "✅ Returned to main menu\n"
+        "تم العودة للقائمة الرئيسية"
+    )
+
+    try:
+        await query.delete_message()
+    except Exception:
+        pass
+
+    # إرسال رسالة بسيطة
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=back_message
+    )

@@ -1,0 +1,18 @@
+📱 BINANCE QR CODE INSTRUCTIONS
+════════════════════════════════
+
+To enable the QR code feature in the support section:
+
+1. Generate your Binance Pay QR code:
+   - Open Binance app
+   - Go to Pay → Receive
+   - Generate QR code for Pay ID: 86847466
+   - Save the QR code image
+
+2. Add the image to this directory:
+   - File name: binance_qr.jpeg
+   - Location: assets/binance_qr.jpeg
+
+3. The bot will automatically use it when users click "Show QR Code"
+
+Note: Until you add the actual QR code, users will see the Pay ID only.

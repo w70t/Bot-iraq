@@ -22,6 +22,7 @@ from handlers.admin import admin_conv_handler
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
+from handlers.support_handler import show_support_message, show_qr_code, support_back
 from utils import get_message, escape_markdown, get_config, load_config, setup_bot_menu
 from database import init_db, update_user_interaction
 
@@ -99,30 +100,6 @@ async def handle_vip_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "📅 **Renewal:** Automatically every month"
         )
         await query.message.edit_text(details_message, parse_mode='Markdown')
-
-    elif query.data == "support_binance":
-        # زر دعم Binance
-        BINANCE_WALLET = os.getenv("BINANCE_WALLET", "Contact @7kmmy for Binance wallet")
-
-        binance_message = (
-            "💰 **دعم عبر Binance / Support via Binance**\n\n"
-            "📋 **عنوان المحفظة / Wallet Address:**\n"
-            f"`{BINANCE_WALLET}`\n\n"
-            "🙏 **شكراً لدعمك! / Thank you for your support!**\n"
-            "💝 دعمك يساعد في تطوير وتحسين البوت\n"
-            "Your support helps develop and improve the bot\n\n"
-            "📸 للتأكيد أو الاستفسار:\n"
-            "For confirmation or inquiries:\n"
-            "👉 [Instagram: @7kmmy](https://www.instagram.com/7kmmy)"
-        )
-
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        keyboard = [
-            [InlineKeyboardButton("📸 تواصل عبر Instagram / Contact via Instagram", url="https://www.instagram.com/7kmmy")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await query.message.edit_text(binance_message, reply_markup=reply_markup, parse_mode='Markdown')
 
 # إعدادات أساسية
 logging.basicConfig(
@@ -329,19 +306,29 @@ def main() -> None:
     # 8. Handler للأزرار التفاعلية (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_vip_buttons,
-        pattern="^(vip_payment|contact_support|vip_details|support_binance)$"
+        pattern="^(vip_payment|contact_support|vip_details)$"
     ))
-    
-    # 9. Handler لأزرار نظام الإحالة (Callback Query)
+
+    # 9. Handler لأزرار الدعم (Callback Query)
+    application.add_handler(CallbackQueryHandler(
+        show_qr_code,
+        pattern="^support_show_qr$"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        support_back,
+        pattern="^support_back$"
+    ))
+
+    # 10. Handler لأزرار نظام الإحالة (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_referral_callback,
         pattern="^(refresh_referral_stats|copy_referral_)"
     ))
-    
-    # 10. Handler للوحة تحكم الأدمن
+
+    # 11. Handler للوحة تحكم الأدمن
     application.add_handler(admin_conv_handler)
-    
-    # 11. Handler لتحميل الفيديوهات من الروابط (يجب أن يكون الأخير)
+
+    # 12. Handler لتحميل الفيديوهات من الروابط (يجب أن يكون الأخير)
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Regex(r"https?://\S+"),

@@ -227,31 +227,9 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(subscribe_message, reply_markup=reply_markup, parse_mode='Markdown')
 
     elif text in ["🎁 دعم صاحب البوت", "🎁 Support the Creator"]:
-        import os
-
-        # رسالة الدعم
-        support_message = (
-            "💝 **شكراً على دعمك! / Thank you for your support!**\n\n"
-            "يمكنك إرسال مكافأة عبر:\n"
-            "You can send a tip via:\n\n"
-            "💰 Binance أو 📸 Instagram:\n"
-            "👉 [اضغط هنا / Click here](https://www.instagram.com/7kmmy)\n\n"
-            "🙏 دعمك يساعد في تطوير البوت\n"
-            "Your support helps develop the bot"
-        )
-
-        # إنشاء أزرار الدعم
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-        BINANCE_WALLET = os.getenv("BINANCE_WALLET", "Contact @7kmmy for Binance wallet")
-
-        keyboard = [
-            [InlineKeyboardButton("💰 دعم عبر Binance / Support via Binance", callback_data="support_binance")],
-            [InlineKeyboardButton("📸 دعم عبر Instagram / Support via Instagram", url="https://www.instagram.com/7kmmy")]
-        ]
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(support_message, reply_markup=reply_markup, parse_mode='Markdown')
+        # استخدام معالج الدعم الجديد
+        from handlers.support_handler import show_support_message
+        await show_support_message(update, context)
 
     elif text in ["🌐 تغيير اللغة", "🌐 Change Language"]:
         keyboard = [["العربية 🇸🇦", "English 🇬🇧"]]
