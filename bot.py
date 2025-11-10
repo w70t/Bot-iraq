@@ -172,13 +172,45 @@ async def forward_to_log_channel(update: Update, context: ContextTypes.DEFAULT_T
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج أمر المساعدة"""
     from database import get_user_language
-    
+
     user_id = update.message.from_user.id
     lang = get_user_language(user_id)
     update_user_interaction(user_id)
-    
+
     help_text = get_message(lang, "help_message")
     await update.message.reply_text(help_text, parse_mode='Markdown')
+
+async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج زر Help من الأزرار التفاعلية"""
+    from database import get_user_language
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang = get_user_language(user_id)
+    update_user_interaction(user_id)
+
+    await query.answer()
+
+    help_text = get_message(lang, "help_message")
+
+    # إنشاء زر Contact Us
+    if lang == "ar":
+        keyboard = [
+            [InlineKeyboardButton("📸 تواصل معنا عبر Instagram", url="https://instagram.com/7kmmy")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("📸 Contact Us on Instagram", url="https://instagram.com/7kmmy")]
+        ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        help_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
 
 async def send_startup_reports(application: Application):
     """إرسال تقارير بدء التشغيل إلى قناة السجلات والأدمن"""
@@ -503,6 +535,12 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(
         handle_admin_panel_callback,
         pattern="^admin_panel$"
+    ))
+
+    # 11.6. Handler لزر Help (Callback Query)
+    application.add_handler(CallbackQueryHandler(
+        handle_help,
+        pattern="^help$"
     ))
 
     # 12. Handler للوحة تحكم الأدمن
