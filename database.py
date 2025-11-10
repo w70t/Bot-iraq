@@ -1276,7 +1276,7 @@ def is_welcome_broadcast_enabled():
 
 # إنشاء مجموعة التحميلات
 try:
-    downloads_collection = db.downloads if db else None
+    downloads_collection = db.downloads if db is not None else None
 except Exception as e:
     logger.error(f"❌ فشل إنشاء مجموعة التحميلات: {e}")
     downloads_collection = None
