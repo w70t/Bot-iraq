@@ -30,6 +30,10 @@ from handlers.download import (
     is_playlist_url
 )
 from handlers.general import handle_reactive_response
+ claude/fix-admin-button-broadcast-011CUzggLe14RLm3jLQNsBSg
+
+ claude/fix-startup-errors-011CUzQ5Pya2S56TJNyUf3Qv
+main
 from handlers.notifications import (
     send_startup_notification,
     send_shutdown_notification,
@@ -37,7 +41,13 @@ from handlers.notifications import (
     send_update_notification,
     announce_new_bot
 )
+ claude/fix-admin-button-broadcast-011CUzggLe14RLm3jLQNsBSg
+
+from handlers.admin import admin_conv_handler
+
+main
 from handlers.admin import admin_conv_handler, handle_admin_panel_callback
+ main
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
