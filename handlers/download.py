@@ -21,6 +21,7 @@ ACTIVE_DOWNLOADS = {}  # user_id -> asyncio.Task
 USER_SEMAPHORE = defaultdict(lambda: asyncio.Semaphore(2))  # max 2 concurrent per user
 PLAYLISTS = {}  # user_id -> {entries: list, quality: str, progress_msg: Message}
 CANCEL_MESSAGES = {}  # user_id -> Message (for updating progress)
+SELECTED_VIDEOS = defaultdict(set)  # user_id -> set of selected video indices
 
 # ===== Batch YouTube download support =====
 YOUTUBE_REGEX = re.compile(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+))')
@@ -1307,18 +1308,28 @@ async def handle_playlist_download(update: Update, context: ContextTypes.DEFAULT
                 'url': url
             }
 
-            # Show quality selection
-            keyboard = [
-                [InlineKeyboardButton("⭐ أفضل جودة", callback_data=f"batch_quality:best:{user_id}")],
-                [InlineKeyboardButton("📱 جودة متوسطة (أسرع)", callback_data=f"batch_quality:medium:{user_id}")],
-                [InlineKeyboardButton("🎧 صوت فقط (MP3)", callback_data=f"batch_quality:audio:{user_id}")],
-                [InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")]
-            ]
+            # Show video selection first
+            SELECTED_VIDEOS[user_id] = set(range(1, total + 1))  # Select all by default
+
+            keyboard = []
+            for i, entry in enumerate(playlist_info['entries'], start=1):
+                title = entry.get('title', f'فيديو {i}')
+                keyboard.append([InlineKeyboardButton(
+                    f"✅ {i}. {title[:35]}",
+                    callback_data=f"toggle_video:{user_id}:{i}"
+                )])
+
+            # Add action buttons
+            keyboard.append([
+                InlineKeyboardButton("📦 تحميل المحدد", callback_data=f"proceed_selection:{user_id}"),
+                InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")
+            ])
 
             await progress_msg.edit_text(
                 f"✅ تم تحليل **{total} فيديو** من قائمة التشغيل:\n"
                 f"📋 {playlist_info['title'][:50]}\n\n"
-                f"اختر الجودة المناسبة:",
+                f"اختر الفيديوهات التي تريد تحميلها:\n"
+                f"(الكل محدد افتراضياً)",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown"
             )
@@ -1355,7 +1366,13 @@ async def handle_batch_quality_choice(update: Update, context: ContextTypes.DEFA
         await query.answer("⚠️ لديك تحميل جارٍ بالفعل.", show_alert=True)
         return
 
-    entries = playlist_data['entries']
+    # Get only selected videos
+    selected_indices = SELECTED_VIDEOS.get(user_id, set())
+    if not selected_indices:
+        # If no selection, use all
+        selected_indices = set(range(1, len(playlist_data['entries']) + 1))
+
+    entries = [playlist_data['entries'][i-1] for i in sorted(selected_indices)]
     total = len(entries)
 
     quality_text = {
@@ -1484,3 +1501,93 @@ async def handle_batch_quality_choice(update: Update, context: ContextTypes.DEFA
 
     task = asyncio.create_task(_batch_download_with_progress(), name=f"batch_download:{user_id}")
     ACTIVE_DOWNLOADS[user_id] = task
+
+# ===== Selective video selection handlers =====
+async def toggle_video_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبديل اختيار فيديو محدد"""
+    query = update.callback_query
+    await query.answer()
+
+    data_parts = query.data.split(":")
+    user_id = int(data_parts[1])
+    video_index = int(data_parts[2])
+
+    if query.from_user.id != user_id:
+        await query.answer("⚠️ هذا ليس طلبك!", show_alert=True)
+        return
+
+    # Toggle selection
+    if video_index in SELECTED_VIDEOS[user_id]:
+        SELECTED_VIDEOS[user_id].remove(video_index)
+    else:
+        SELECTED_VIDEOS[user_id].add(video_index)
+
+    # Rebuild keyboard with updated selections
+    playlist_data = PLAYLISTS.get(user_id)
+    if not playlist_data:
+        await query.edit_message_text("❌ انتهت صلاحية الطلب.")
+        return
+
+    entries = playlist_data['entries']
+    keyboard = []
+
+    for i, entry in enumerate(entries, start=1):
+        title = entry.get('title', f'فيديو {i}')
+        is_selected = i in SELECTED_VIDEOS[user_id]
+        emoji = "✅" if is_selected else "☐"
+        keyboard.append([InlineKeyboardButton(
+            f"{emoji} {i}. {title[:35]}",
+            callback_data=f"toggle_video:{user_id}:{i}"
+        )])
+
+    # Add action buttons
+    selected_count = len(SELECTED_VIDEOS[user_id])
+    keyboard.append([
+        InlineKeyboardButton(
+            f"📦 تحميل المحدد ({selected_count})",
+            callback_data=f"proceed_selection:{user_id}"
+        ),
+        InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")
+    ])
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+    except Exception as e:
+        logger.debug(f"لم يتم تحديث الرسالة: {e}")
+
+async def proceed_to_quality_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المتابعة إلى اختيار الجودة بعد اختيار الفيديوهات"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = int(query.data.split(":")[1])
+
+    if query.from_user.id != user_id:
+        await query.answer("⚠️ هذا ليس طلبك!", show_alert=True)
+        return
+
+    selected = SELECTED_VIDEOS.get(user_id, set())
+
+    if not selected:
+        await query.answer("⚠️ يجب اختيار فيديو واحد على الأقل!", show_alert=True)
+        return
+
+    playlist_data = PLAYLISTS.get(user_id)
+    if not playlist_data:
+        await query.edit_message_text("❌ انتهت صلاحية الطلب.")
+        return
+
+    # Show quality selection
+    keyboard = [
+        [InlineKeyboardButton("⭐ أفضل جودة", callback_data=f"batch_quality:best:{user_id}")],
+        [InlineKeyboardButton("📱 جودة متوسطة (أسرع)", callback_data=f"batch_quality:medium:{user_id}")],
+        [InlineKeyboardButton("🎧 صوت فقط (MP3)", callback_data=f"batch_quality:audio:{user_id}")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")]
+    ]
+
+    await query.edit_message_text(
+        f"✅ تم اختيار **{len(selected)}** فيديو\n\n"
+        f"اختر الجودة:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )

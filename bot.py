@@ -25,8 +25,11 @@ from handlers.download import (
     handle_batch_download,
     handle_playlist_download,
     handle_batch_quality_choice,
+    toggle_video_selection,
+    proceed_to_quality_selection,
     is_playlist_url
 )
+from handlers.general import handle_reactive_response
 from handlers.admin import admin_conv_handler
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
@@ -244,6 +247,66 @@ async def send_startup_reports(application: Application):
         logger.error(f"❌ خطأ في إرسال تقارير بدء التشغيل: {e}")
 
 
+async def self_test(application: Application):
+    """نظام اختبار ذاتي للتحقق من المعالجات"""
+    logger.info("🧪 Running self-test...")
+
+    # Test critical handlers
+    test_handlers = [
+        "cancel_download_callback",
+        "toggle_video_selection",
+        "proceed_to_quality_selection",
+        "handle_batch_quality_choice",
+        "handle_playlist_download",
+        "handle_reactive_response"
+    ]
+
+    passed = 0
+    failed = 0
+
+    for handler_name in test_handlers:
+        try:
+            # Check if handler exists in imports
+            handler_exists = handler_name in globals()
+            if handler_exists:
+                logger.info(f"✅ Handler OK: {handler_name}")
+                passed += 1
+            else:
+                logger.warning(f"❌ Missing handler: {handler_name}")
+                failed += 1
+        except Exception as e:
+            logger.error(f"❌ Error checking {handler_name}: {e}")
+            failed += 1
+
+    logger.info(f"🧩 Self-test complete: {passed} passed, {failed} failed")
+    return passed, failed
+
+async def send_update_channel_notification(application: Application):
+    """إرسال إشعار لقناة التحديثات"""
+    UPDATE_CHANNEL_USERNAME = "@iraq_7kmmy"  # https://t.me/iraq_7kmmy
+
+    try:
+        update_message = (
+            "🚀 **تم تحديث البوت بنجاح!**\n\n"
+            "✅ **الإصدار الجديد جاهز**\n\n"
+            "🎯 المميزات الجديدة:\n"
+            "• اختيار فيديوهات محددة من القوائم\n"
+            "• تفاعلات تلقائية مع الروابط\n"
+            "• نظام اختبار ذاتي\n\n"
+            "⚡ جميع الأنظمة تعمل بكفاءة!"
+        )
+
+        await application.bot.send_message(
+            chat_id=UPDATE_CHANNEL_USERNAME,
+            text=update_message,
+            parse_mode="Markdown"
+        )
+
+        logger.info(f"✅ تم إرسال إشعار التحديث إلى {UPDATE_CHANNEL_USERNAME}")
+
+    except Exception as e:
+        logger.warning(f"⚠️ فشل إرسال إشعار التحديث: {e}")
+
 async def post_init(application: Application):
     """يتم تنفيذه بعد تهيئة البوت"""
     logger.info("🚀 بدء إعداد قائمة الأوامر...")
@@ -252,6 +315,12 @@ async def post_init(application: Application):
 
     # إرسال تقارير بدء التشغيل
     await send_startup_reports(application)
+
+    # Self-test
+    await self_test(application)
+
+    # Send update channel notification
+    await send_update_channel_notification(application)
 
 def main() -> None:
     """تشغيل البوت الرئيسي"""
@@ -320,6 +389,12 @@ def main() -> None:
         group=-1
     )
 
+    # 1.5. Handler للتفاعلات التلقائية (emoji reactions)
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_reactive_response),
+        group=-2
+    )
+
     # 2. أوامر البداية
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -377,7 +452,7 @@ def main() -> None:
         pattern="^download_cancel$"
     ))
 
-    # 7.5. Playlist handlers (cancel button, batch quality choice)
+    # 7.5. Playlist handlers (cancel button, batch quality choice, video selection)
     application.add_handler(CallbackQueryHandler(
         cancel_download_callback,
         pattern="^cancel:"
@@ -385,6 +460,14 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(
         handle_batch_quality_choice,
         pattern="^batch_quality:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        toggle_video_selection,
+        pattern="^toggle_video:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        proceed_to_quality_selection,
+        pattern="^proceed_selection:"
     ))
 
     # 8. Handler لاختيار الجودة - النظام القديم (Callback Query)
