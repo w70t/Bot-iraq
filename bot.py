@@ -189,7 +189,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج زر Help من الأزرار التفاعلية"""
-    from database import get_user_language
+    from database import get_user_language, is_admin
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     query = update.callback_query
@@ -201,15 +201,21 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     help_text = get_message(lang, "help_message")
 
-    # إنشاء زر Contact Us
+    # إنشاء أزرار القائمة
     if lang == "ar":
         keyboard = [
             [InlineKeyboardButton("📸 تواصل معنا عبر Instagram", url="https://instagram.com/7kmmy")]
         ]
+        # إضافة زر Admin للمدراء فقط
+        if is_admin(user_id):
+            keyboard.insert(0, [InlineKeyboardButton("🛠️ لوحة التحكم", callback_data="admin_panel")])
     else:
         keyboard = [
             [InlineKeyboardButton("📸 Contact Us on Instagram", url="https://instagram.com/7kmmy")]
         ]
+        # Add Admin button for admins only
+        if is_admin(user_id):
+            keyboard.insert(0, [InlineKeyboardButton("🛠️ Admin Panel", callback_data="admin_panel")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 

@@ -195,19 +195,26 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     elif text in ["❓ المساعدة", "❓ Help"]:
         help_text = get_message(lang, "help_message")
-        
-        # إنشاء زر Contact Us فقط
+
+        # إنشاء أزرار القائمة
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        
+        from database import is_admin
+
         if lang == "ar":
             keyboard = [
                 [InlineKeyboardButton("📸 تواصل معنا عبر Instagram", url="https://instagram.com/7kmmy")]
             ]
+            # إضافة زر Admin للمدراء فقط
+            if is_admin(user_id):
+                keyboard.insert(0, [InlineKeyboardButton("🛠️ لوحة التحكم", callback_data="admin_panel")])
         else:
             keyboard = [
                 [InlineKeyboardButton("📸 Contact Us on Instagram", url="https://instagram.com/7kmmy")]
             ]
-        
+            # Add Admin button for admins only
+            if is_admin(user_id):
+                keyboard.insert(0, [InlineKeyboardButton("🛠️ Admin Panel", callback_data="admin_panel")])
+
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode='Markdown')
     
