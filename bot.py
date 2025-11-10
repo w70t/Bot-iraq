@@ -30,7 +30,7 @@ from handlers.download import (
     is_playlist_url
 )
 from handlers.general import handle_reactive_response
-from handlers.admin import admin_conv_handler
+from handlers.admin import admin_conv_handler, handle_admin_panel_callback
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
@@ -497,6 +497,12 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(
         handle_referral_callback,
         pattern="^(refresh_referral_stats|copy_referral_)"
+    ))
+
+    # 11.5. Handler لزر Admin Panel (Callback Query)
+    application.add_handler(CallbackQueryHandler(
+        handle_admin_panel_callback,
+        pattern="^admin_panel$"
     ))
 
     # 12. Handler للوحة تحكم الأدمن
