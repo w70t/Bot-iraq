@@ -930,3 +930,58 @@ def send_video_report(user_id: int, username: str, url: str, title: str,
         success = _send_telegram_message(log_channel_videos, text)
 
     return success
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Mission 10: Daily Download Reports
+# ═══════════════════════════════════════════════════════════════
+
+async def send_daily_report(context):
+    """
+    إرسال تقرير يومي بإحصائيات التحميلات إلى LOG_CHANNEL_ID
+    يتم استدعاؤها تلقائياً عبر job queue
+    """
+    from database import generate_daily_report
+
+    log_channel_id = os.getenv("LOG_CHANNEL_ID")
+    if not log_channel_id:
+        logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم إرسال التقرير اليومي")
+        return
+
+    # توليد التقرير
+    report = generate_daily_report()
+
+    # إرسال التقرير
+    try:
+        await context.bot.send_message(
+            chat_id=log_channel_id,
+            text=report,
+            parse_mode='Markdown'
+        )
+        logger.info("✅ تم إرسال التقرير اليومي بنجاح")
+    except Exception as e:
+        logger.error(f"❌ فشل إرسال التقرير اليومي: {e}")
+
+
+def setup_daily_report_job(application):
+    """
+    إعداد مهمة إرسال التقرير اليومي
+    يتم استدعاؤها من bot.py عند بدء التشغيل
+
+    Args:
+        application: كائن Application من python-telegram-bot
+    """
+    from datetime import time
+
+    # إرسال التقرير يومياً في الساعة 23:59 بتوقيت UTC
+    job_queue = application.job_queue
+
+    if job_queue:
+        job_queue.run_daily(
+            send_daily_report,
+            time=time(hour=23, minute=59, second=0),
+            name='daily_download_report'
+        )
+        logger.info("✅ تم جدولة التقرير اليومي للساعة 23:59 UTC")
+    else:
+        logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة التقرير اليومي")

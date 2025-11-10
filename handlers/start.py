@@ -88,26 +88,24 @@ def create_main_keyboard(lang_code: str):
 
     if lang_code == "ar":
         keyboard = [
-            ["📥 تحميل فيديو", "👤 حسابي"]
+            ["📥 تحميل فيديو", "🎧 تحميل صوت"],
+            ["👤 حسابي", "❓ المساعدة"]
         ]
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
-            keyboard.append(["⭐ الاشتراك VIP", "❓ المساعدة"])
-        else:
-            keyboard.append(["❓ المساعدة"])
+            keyboard.append(["⭐ الاشتراك VIP"])
 
         # زر الدعم دائماً موجود
         keyboard.append(["🎁 دعم صاحب البوت"])
         keyboard.append(["🌐 تغيير اللغة"])
     else:
         keyboard = [
-            ["📥 Download Video", "👤 My Account"]
+            ["📥 Download Video", "🎧 Download Audio"],
+            ["👤 My Account", "❓ Help"]
         ]
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
-            keyboard.append(["⭐ Subscribe VIP", "❓ Help"])
-        else:
-            keyboard.append(["❓ Help"])
+            keyboard.append(["⭐ Subscribe VIP"])
 
         # زر الدعم دائماً موجود
         keyboard.append(["🎁 Support the Creator"])
@@ -151,7 +149,37 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
             "• And 1000+ more sites!"
         )
         await update.message.reply_text(message, parse_mode='Markdown')
-    
+
+    elif text in ["🎧 تحميل صوت", "🎧 Download Audio"]:
+        message = (
+            "🎵 **أرسل رابط الصوت/الفيديو الآن!**\n\n"
+            "✅ **سيتم استخراج الصوت فقط من:**\n"
+            "• YouTube (حتى 6 روابط)\n"
+            "• Instagram\n"
+            "• Facebook\n"
+            "• TikTok\n"
+            "• Twitter\n\n"
+            "📝 **يمكنك إرسال:**\n"
+            "• رابط واحد\n"
+            "• عدة روابط (حتى 6)\n"
+            "• روابط مفصولة بمسافة أو سطر جديد\n\n"
+            "🎧 **الصيغ المتاحة:** MP3, M4A"
+        ) if lang == "ar" else (
+            "🎵 **Send audio/video link now!**\n\n"
+            "✅ **Audio will be extracted from:**\n"
+            "• YouTube (up to 6 links)\n"
+            "• Instagram\n"
+            "• Facebook\n"
+            "• TikTok\n"
+            "• Twitter\n\n"
+            "📝 **You can send:**\n"
+            "• Single link\n"
+            "• Multiple links (up to 6)\n"
+            "• Links separated by space or new line\n\n"
+            "🎧 **Available formats:** MP3, M4A"
+        )
+        await update.message.reply_text(message, parse_mode='Markdown')
+
     elif text in ["👤 حسابي", "👤 My Account"]:
         await account_info(update, context)
     

@@ -21,7 +21,9 @@ from database import (
     set_subscription_enabled,
     set_welcome_broadcast_enabled,
     is_subscription_enabled,
-    is_welcome_broadcast_enabled
+    is_welcome_broadcast_enabled,
+    get_daily_download_stats,
+    generate_daily_report
 )
 from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days, log_warning
 
@@ -56,6 +58,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
+        [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
         [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
         [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
@@ -119,6 +122,27 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
     
+    return MAIN_MENU
+
+async def show_download_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    عرض سجل التحميلات اليومي (Mission 10)
+    """
+    query = update.callback_query
+    await query.answer()
+
+    # جلب إحصائيات اليوم
+    report = generate_daily_report()
+
+    keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="admin_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        report,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
     return MAIN_MENU
 
 async def upgrade_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1560,6 +1584,8 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(handle_vip_disable_sub, pattern='^vip_disable_sub$'),
             CallbackQueryHandler(toggle_welcome_broadcast, pattern='^vip_toggle_welcome$'),
             CallbackQueryHandler(show_current_vip_status, pattern='^vip_show_status$'),
+            # Mission 10: Download Logs
+            CallbackQueryHandler(show_download_logs, pattern='^admin_download_logs$'),
             # القائمة القديمة
             CallbackQueryHandler(list_users, pattern='^admin_list_users$'),
             CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
