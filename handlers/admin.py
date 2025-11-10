@@ -1630,6 +1630,5 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },
-    fallbacks=[CommandHandler('cancel', cancel)],
-    per_message=True
+    fallbacks=[CommandHandler('cancel', cancel)]
 )
