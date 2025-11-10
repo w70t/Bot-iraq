@@ -1302,6 +1302,42 @@ def is_welcome_broadcast_enabled():
         return True
 
 
+def set_subscription_price(price: float):
+    """تعيين سعر الاشتراك"""
+    try:
+        if settings_collection is None:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'global_settings'},
+            {
+                '$set': {
+                    'subscription_price': price,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        logger.info(f"✅ تم تعيين سعر الاشتراك إلى: ${price}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث سعر الاشتراك: {e}")
+        return False
+
+
+def get_subscription_price():
+    """جلب سعر الاشتراك الحالي"""
+    try:
+        settings = get_global_settings()
+        if not settings:
+            return 3.0  # السعر الافتراضي
+        return settings.get('subscription_price', 3.0)
+    except Exception as e:
+        logger.error(f"❌ فشل جلب سعر الاشتراك: {e}")
+        return 3.0
+
+
 # ═══════════════════════════════════════════════════════════════
 #  Mission 10: Download Tracking & Admin Logs
 # ═══════════════════════════════════════════════════════════════

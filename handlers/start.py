@@ -71,16 +71,44 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lang_code = "ar"
 
     update_user_language(user_id, lang_code)
-    
-    # الرسالة الترحيبية
-    welcome_message = get_message(lang_code, "welcome").format(name=user.first_name)
-    
+
+    # الرسالة الترحيبية مع قناة التحديثات
+    if lang_code == "ar":
+        welcome_message = (
+            f"✨ **أهلاً {user.first_name}!**\n\n"
+            "📥 يمكنك الآن تحميل الفيديوهات والصوتيات من جميع المنصات!\n\n"
+            "📢 **تابع قناتنا الرسمية للتحديثات:**"
+        )
+    else:
+        welcome_message = (
+            f"✨ **Welcome {user.first_name}!**\n\n"
+            "📥 You can now download videos and audios from all platforms!\n\n"
+            "📢 **Follow our official channel for updates:**"
+        )
+
     # إنشاء لوحة المفاتيح الرئيسية
     keyboard = create_main_keyboard(lang_code)
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
+
+    # إنشاء زر قناة التحديثات
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    channel_keyboard = [
+        [InlineKeyboardButton("📢 قناة التحديثات الرسمية" if lang_code == "ar" else "📢 Official Updates Channel",
+                             url="https://t.me/iraq_7kmmy")]
+    ]
+    channel_markup = InlineKeyboardMarkup(channel_keyboard)
+
+    # إرسال رسالة الترحيب مع زر القناة
     await update.message.reply_text(
         welcome_message,
+        reply_markup=channel_markup,
+        parse_mode='Markdown'
+    )
+
+    # إرسال لوحة المفاتيح الرئيسية بعد ذلك
+    welcome_keyboard_text = get_message(lang_code, "welcome").format(name=user.first_name)
+    await update.message.reply_text(
+        "🎉 **القائمة الرئيسية:**" if lang_code == "ar" else "🎉 **Main Menu:**",
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
@@ -219,6 +247,10 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode='Markdown')
     
     elif text in ["⭐ الاشتراك VIP", "⭐ Subscribe VIP"]:
+        # جلب السعر من قاعدة البيانات
+        from database import get_subscription_price
+        price = get_subscription_price()
+
         subscribe_message = (
             "👑 **باقة VIP المميزة!**\n\n"
             "✨ **المميزات:**\n"
@@ -228,10 +260,12 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
             "📺 جودات عالية 4K/HD\n"
             "⚡ أولوية في المعالجة\n"
             "🎵 تحميل صوتي MP3\n\n"
-            "💰 **السعر:** 3$ شهرياً\n\n"
+            f"💰 **السعر:** ${price} شهرياً\n\n"
             "📞 **للاشتراك، تواصل معنا:**\n"
             "📸 Instagram: @7kmmy\n"
             "🔗 https://instagram.com/7kmmy\n\n"
+            "📢 **تابعنا على Telegram:**\n"
+            "🔗 https://t.me/iraq_7kmmy\n\n"
             "💡 **انقر على الأزرار أدناه للتفاعل**"
         ) if lang == "ar" else (
             "👑 **VIP Premium Plan!**\n\n"
@@ -242,10 +276,12 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
             "📺 High quality 4K/HD\n"
             "⚡ Priority processing\n"
             "🎵 Audio download MP3\n\n"
-            "💰 **Price:** $3 monthly\n\n"
+            f"💰 **Price:** ${price} monthly\n\n"
             "📞 **To subscribe, contact us:**\n"
             "📸 Instagram: @7kmmy\n"
             "🔗 https://instagram.com/7kmmy\n\n"
+            "📢 **Follow us on Telegram:**\n"
+            "🔗 https://t.me/iraq_7kmmy\n\n"
             "💡 **Click the buttons below to interact**"
         )
         
