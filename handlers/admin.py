@@ -1329,11 +1329,17 @@ async def show_vip_control_panel(update: Update, context: ContextTypes.DEFAULT_T
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
-        message_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    # فحص إذا كانت الرسالة مختلفة قبل التعديل
+    try:
+        if query.message.text != message_text:
+            await query.edit_message_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        # إذا فشل التعديل، نتجاهل الخطأ
+        logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
 
     return MAIN_MENU
 
@@ -1487,11 +1493,16 @@ async def show_current_vip_status(update: Update, context: ContextTypes.DEFAULT_
     keyboard = [[InlineKeyboardButton("🔙 العودة / Back", callback_data="admin_vip_control")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
-        status_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    # فحص إذا كانت الرسالة مختلفة قبل التعديل
+    try:
+        if query.message.text != status_text:
+            await query.edit_message_text(
+                status_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+    except Exception as e:
+        logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
 
     return MAIN_MENU
 

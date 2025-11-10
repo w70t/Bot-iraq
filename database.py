@@ -1169,7 +1169,7 @@ def reset_performance_metrics():
 def get_global_settings():
     """جلب الإعدادات العامة للبوت"""
     try:
-        if not settings_collection:
+        if settings_collection is None:
             return None
 
         settings = settings_collection.find_one({'_id': 'global_settings'})
@@ -1195,7 +1195,7 @@ def get_global_settings():
 def set_subscription_enabled(enabled: bool):
     """تفعيل أو إيقاف نظام الاشتراك"""
     try:
-        if not settings_collection:
+        if settings_collection is None:
             return False
 
         settings_collection.update_one(
@@ -1220,7 +1220,7 @@ def set_subscription_enabled(enabled: bool):
 def set_welcome_broadcast_enabled(enabled: bool):
     """تفعيل أو إيقاف رسالة الترحيب عند تفعيل الاشتراك"""
     try:
-        if not settings_collection:
+        if settings_collection is None:
             return False
 
         settings_collection.update_one(
