@@ -38,6 +38,20 @@ executor = ThreadPoolExecutor(max_workers=3)
 # حالات المحادثة
 MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE = range(4)
 
+async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج زر Admin Panel من الأزرار التفاعلية"""
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    # التحقق من صلاحيات الأدمن
+    if not is_admin(user_id):
+        await query.answer("🚫 You don't have permission to access this section.", show_alert=True)
+        return
+
+    # إذا كان أدمن، عرض لوحة التحكم
+    await query.answer()
+    return await admin_panel(update, context)
+
 @admin_only
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض لوحة التحكم الرئيسية"""
