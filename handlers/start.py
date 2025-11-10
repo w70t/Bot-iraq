@@ -28,11 +28,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # معالجة الإحالة إذا كانت موجودة
     if referral_code:
         from telegram.ext import ContextTypes
-        # جلب الـ bot من context
-        referral_success = track_referral(referral_code, user_id, bot=context.bot)
+        # جلب الـ bot من context (تمرير None لتجنب مشاكل async)
+        referral_success = track_referral(referral_code, user_id, bot=None)
         if referral_success:
-            # تم إضافة إشعارات تلقائية في track_referral
-            pass
+            # إرسال إشعار يدوي للمستخدم الجديد
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="🎉 تمت إضافة الإحالة بنجاح!\n✅ Referral successfully added!",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                print(f"Referral notification error: {e}")
     
     # توليد كود إحالة للمستخدم الجديد
     generate_referral_code(user_id)

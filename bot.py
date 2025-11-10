@@ -289,7 +289,10 @@ def main() -> None:
 
     # إنشاء التطبيق
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    
+
+    # تفعيل المعالجة المتزامنة لعدة تحديثات
+    application.concurrent_updates = 10
+
     # تخزين الإعدادات
     application.bot_data["config"] = config
 

@@ -2,11 +2,16 @@ import os
 import asyncio
 import time
 import requests
+import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import yt_dlp
 from yt_dlp.utils import DownloadError
 import logging
+
+# ThreadPoolExecutor for async subprocess execution
+executor = ThreadPoolExecutor(max_workers=5)
 
 from database import (
     is_subscribed,
@@ -702,10 +707,19 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
         if should_apply_logo:
             from utils import apply_animated_watermark
-            
+
             temp_watermarked_path = new_filepath.replace(f".{ext}", f"_watermarked.{ext}")
-            result_path = apply_animated_watermark(new_filepath, temp_watermarked_path, logo_path)
-            
+
+            # استخدام ThreadPoolExecutor لتجنب التجميد أثناء FFmpeg
+            loop = asyncio.get_event_loop()
+            result_path = await loop.run_in_executor(
+                executor,
+                apply_animated_watermark,
+                new_filepath,
+                temp_watermarked_path,
+                logo_path
+            )
+
             if result_path != new_filepath and os.path.exists(result_path):
                 final_video_path = result_path
                 logger.info(f"✨ تم تطبيق اللوجو المتحرك")
