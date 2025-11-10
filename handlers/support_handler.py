@@ -74,6 +74,43 @@ async def show_support_message(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
 
+def create_placeholder_qr(qr_image_path: str) -> bool:
+    """
+    إنشاء صورة بديلة لرمز QR إذا لم تكن موجودة
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        # إنشاء صورة بخلفية بيضاء
+        img = Image.new('RGB', (500, 500), color='white')
+        draw = ImageDraw.Draw(img)
+
+        # رسم مربع للإشارة إلى مكان QR
+        draw.rectangle([(50, 50), (450, 450)], outline='#FF9800', width=5)
+
+        # إضافة نص توضيحي
+        text = "QR Code\nNot Found\n\nPlease upload\nQR image to:\nassets/binance_qr.jpeg"
+
+        # رسم النص في المنتصف
+        draw.multiline_text(
+            (250, 250),
+            text,
+            fill='#FF9800',
+            anchor="mm",
+            align="center"
+        )
+
+        # حفظ الصورة
+        os.makedirs(os.path.dirname(qr_image_path), exist_ok=True)
+        img.save(qr_image_path)
+        logger.info(f"Created placeholder QR image at: {qr_image_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to create placeholder QR: {e}")
+        return False
+
+
 async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     إرسال رمز QR الخاص بـ Binance Pay
@@ -91,19 +128,28 @@ async def show_qr_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Looking for QR image at: {qr_image_path}")
 
-    # التحقق من وجود الصورة
+    # التحقق من وجود الصورة - إنشاء placeholder إذا لم تكن موجودة
     if not os.path.exists(qr_image_path):
-        error_message = (
-            "❌ عذراً، رمز QR غير متوفر حالياً.\n"
-            "Sorry, QR code is not available at the moment.\n\n"
-            f"📋 يمكنك استخدام Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n"
-            f"You can use Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n\n"
-            "💡 الرجاء إضافة الصورة في: assets/binance_qr.jpeg\n"
-            "Please add the image to: assets/binance_qr.jpeg"
-        )
         logger.warning(f"QR image not found at: {qr_image_path}")
-        await query.answer(error_message, show_alert=True)
-        return
+
+        # محاولة إنشاء placeholder
+        if not create_placeholder_qr(qr_image_path):
+            # فشل إنشاء placeholder - إرسال رسالة نصية فقط
+            await query.answer("❌ QR image missing", show_alert=True)
+
+            error_message = (
+                "❌ عذراً، رمز QR غير متوفر حالياً.\n"
+                "Sorry, QR code is not available at the moment.\n\n"
+                f"📋 يمكنك استخدام Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`\n"
+                f"You can use Pay ID: `{os.getenv('BINANCE_WALLET', '86847466')}`"
+            )
+
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=error_message,
+                parse_mode='Markdown'
+            )
+            return
 
     # رسالة مرفقة مع الصورة
     caption = (

@@ -15,7 +15,7 @@ from telegram.ext import ContextTypes
 import yt_dlp
 
 from database import get_user_language, record_download_attempt, track_download
-from utils import log_warning, send_critical_log
+from utils import log_warning, send_critical_log, log_error_to_file
 
 logger = logging.getLogger(__name__)
 
@@ -223,17 +223,29 @@ class MultiDownloadProgress:
                 logger.debug(f"Progress update error: {e}")
 
     async def _safe_update(self, text: str):
-        """تحديث آمن للرسالة"""
+        """تحديث آمن للرسالة مع زر الإلغاء"""
         try:
-            await self.message.edit_text(text)
+            # إضافة زر الإلغاء
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+            keyboard = [[
+                InlineKeyboardButton(
+                    "❌ إلغاء التحميل / Cancel Download",
+                    callback_data="download_cancel"
+                )
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await self.message.edit_text(text, reply_markup=reply_markup)
         except Exception:
             pass
 
     def _create_progress_bar(self, percentage: int) -> str:
-        """إنشاء شريط تقدم"""
-        filled = int(percentage / 5)
-        empty = 20 - filled
-        return f"{'▰' * filled}{'▱' * empty} {percentage}%"
+        """إنشاء شريط تقدم بتصميم محسّن"""
+        # استخدام ▓ للجزء المكتمل و ░ للجزء المتبقي
+        filled = int(percentage / 10)  # 10 مربعات (كل 10%)
+        empty = 10 - filled
+        return f"{'▓' * filled}{'░' * empty} {percentage}%"
 
     async def set_uploading(self, file_num: int):
         """تعيين حالة الرفع"""
@@ -364,6 +376,10 @@ async def download_videos(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         except Exception as e:
             logger.error(f"Download error for {url}: {e}")
             log_warning(f"فشل تحميل فيديو: {url} - {str(e)}", module="multi_download_handler")
+
+            # Mission 11: Enhanced error logging
+            log_error_to_file("video_download", query.from_user.id, url, e)
+
             failed += 1
 
             # تسجيل الفشل
@@ -474,9 +490,17 @@ async def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE, aud
                     title=info.get('title', 'Audio')
                 )
 
-            # حذف الملف
+            # حذف الملف - التحقق من وجوده أولاً
             file_size_bytes = os.path.getsize(filename) if os.path.exists(filename) else 0
-            os.remove(filename)
+
+            # حذف الملف المحول فقط إذا كان موجوداً
+            if os.path.exists(filename):
+                os.remove(filename)
+
+            # حذف الملف الأصلي (.webm أو غيره) إذا كان مختلفاً
+            if os.path.exists(base_filename) and base_filename != filename:
+                os.remove(base_filename)
+
             successful += 1
 
             # تسجيل مفصل في قاعدة البيانات (Mission 10)
@@ -495,6 +519,10 @@ async def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE, aud
         except Exception as e:
             logger.error(f"Audio download error for {url}: {e}")
             log_warning(f"فشل تحميل صوت: {url} - {str(e)}", module="multi_download_handler")
+
+            # Mission 11: Enhanced error logging
+            log_error_to_file("audio_download", query.from_user.id, url, e)
+
             failed += 1
 
             # تسجيل الفشل

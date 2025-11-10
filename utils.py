@@ -985,3 +985,51 @@ def setup_daily_report_job(application):
         logger.info("✅ تم جدولة التقرير اليومي للساعة 23:59 UTC")
     else:
         logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة التقرير اليومي")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Mission 11: Enhanced Error Logging
+# ═══════════════════════════════════════════════════════════════
+
+def log_error_to_file(error_type: str, user_id: int, url: str, exception: Exception):
+    """
+    تسجيل الأخطاء إلى ملف logs/errors.log
+
+    Args:
+        error_type: نوع الخطأ (download/upload/compression/etc)
+        user_id: معرف المستخدم
+        url: رابط الفيديو/الصوت
+        exception: الاستثناء المرفوع
+    """
+    import traceback
+
+    try:
+        # إنشاء مجلد logs إذا لم يكن موجوداً
+        os.makedirs('logs', exist_ok=True)
+
+        # تنسيق الوقت
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # الحصول على traceback مختصر (آخر 3 أسطر فقط)
+        tb_lines = traceback.format_exception(type(exception), exception, exception.__traceback__)
+        short_traceback = ''.join(tb_lines[-3:])
+
+        # بناء رسالة السجل
+        log_entry = (
+            f"\n{'='*60}\n"
+            f"[{timestamp}] {error_type.upper()} ERROR\n"
+            f"User ID: {user_id}\n"
+            f"URL: {url}\n"
+            f"Exception: {type(exception).__name__}: {str(exception)}\n"
+            f"Traceback:\n{short_traceback}"
+            f"{'='*60}\n"
+        )
+
+        # كتابة إلى الملف
+        with open('logs/errors.log', 'a', encoding='utf-8') as f:
+            f.write(log_entry)
+
+        logger.info(f"✅ Error logged to logs/errors.log: {error_type}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to write error log: {e}")

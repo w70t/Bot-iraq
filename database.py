@@ -1304,7 +1304,7 @@ def track_download(
         error_msg: رسالة الخطأ إن وجدت
     """
     try:
-        if not downloads_collection:
+        if downloads_collection is None:
             logger.warning("⚠️ مجموعة التحميلات غير متاحة")
             return False
 
@@ -1338,7 +1338,7 @@ def track_download(
 def get_user_downloads(user_id: int, limit: int = 50):
     """جلب سجل تحميلات المستخدم"""
     try:
-        if not downloads_collection:
+        if downloads_collection is None:
             return []
 
         downloads = list(downloads_collection.find(
@@ -1363,7 +1363,7 @@ def get_download_stats(start_date=None, end_date=None):
         dict: إحصائيات التحميلات
     """
     try:
-        if not downloads_collection:
+        if downloads_collection is None:
             return {}
 
         # تحديد نطاق التاريخ
