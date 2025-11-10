@@ -30,6 +30,13 @@ from handlers.download import (
     is_playlist_url
 )
 from handlers.general import handle_reactive_response
+from handlers.notifications import (
+    send_startup_notification,
+    send_shutdown_notification,
+    send_error_notification,
+    send_update_notification,
+    announce_new_bot
+)
 from handlers.admin import admin_conv_handler, handle_admin_panel_callback
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
@@ -313,31 +320,6 @@ async def self_test(application: Application):
     logger.info(f"🧩 Self-test complete: {passed} passed, {failed} failed")
     return passed, failed
 
-async def send_update_channel_notification(application: Application):
-    """إرسال إشعار لقناة التحديثات"""
-    UPDATE_CHANNEL_USERNAME = "@iraq_7kmmy"  # https://t.me/iraq_7kmmy
-
-    try:
-        update_message = (
-            "🚀 **تم تحديث البوت بنجاح!**\n\n"
-            "✅ **الإصدار الجديد جاهز**\n\n"
-            "🎯 المميزات الجديدة:\n"
-            "• اختيار فيديوهات محددة من القوائم\n"
-            "• تفاعلات تلقائية مع الروابط\n"
-            "• نظام اختبار ذاتي\n\n"
-            "⚡ جميع الأنظمة تعمل بكفاءة!"
-        )
-
-        await application.bot.send_message(
-            chat_id=UPDATE_CHANNEL_USERNAME,
-            text=update_message,
-            parse_mode="Markdown"
-        )
-
-        logger.info(f"✅ تم إرسال إشعار التحديث إلى {UPDATE_CHANNEL_USERNAME}")
-
-    except Exception as e:
-        logger.warning(f"⚠️ فشل إرسال إشعار التحديث: {e}")
 
 async def post_init(application: Application):
     """يتم تنفيذه بعد تهيئة البوت"""
@@ -351,8 +333,8 @@ async def post_init(application: Application):
     # Self-test
     await self_test(application)
 
-    # Send update channel notification
-    await send_update_channel_notification(application)
+    # إرسال إشعار التشغيل لقناة التحديثات
+    await send_startup_notification(application.bot)
 
 def main() -> None:
     """تشغيل البوت الرئيسي"""
@@ -574,22 +556,42 @@ def main() -> None:
         logger.error(f"❌ فشل جدولة التقرير اليومي: {e}")
 
     # تشغيل البوت
-    if WEBHOOK_URL:
-        logger.info(f"🌐 وضع Webhook")
-        logger.info(f"📍 المنفذ: {PORT}")
-        logger.info(f"🔗 URL: https://{WEBHOOK_URL}/{BOT_TOKEN}")
-        logger.info("=" * 50)
-        
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=BOT_TOKEN,
-            webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
-        )
-    else:
-        logger.info("🔄 وضع Polling (محلي)")
-        logger.info("=" * 50)
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        if WEBHOOK_URL:
+            logger.info(f"🌐 وضع Webhook")
+            logger.info(f"📍 المنفذ: {PORT}")
+            logger.info(f"🔗 URL: https://{WEBHOOK_URL}/{BOT_TOKEN}")
+            logger.info("=" * 50)
+
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path=BOT_TOKEN,
+                webhook_url=f"https://{WEBHOOK_URL}/{BOT_TOKEN}"
+            )
+        else:
+            logger.info("🔄 وضع Polling (محلي)")
+            logger.info("=" * 50)
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    except KeyboardInterrupt:
+        logger.info("⏹️ تم إيقاف البوت بواسطة المستخدم")
+        import asyncio
+        asyncio.run(send_shutdown_notification(application.bot, reason="إيقاف يدوي / Manual stop"))
+
+    except Exception as e:
+        logger.error(f"❌ خطأ فادح في تشغيل البوت: {e}")
+        import asyncio
+        asyncio.run(send_error_notification(
+            application.bot,
+            error_type="Critical Runtime Error",
+            error_message=str(e)
+        ))
+        asyncio.run(send_shutdown_notification(application.bot, reason=f"خطأ فادح / Critical error: {str(e)[:50]}"))
+        raise
+
+    finally:
+        logger.info("🔚 إغلاق البوت...")
 
 if __name__ == "__main__":
     main()
