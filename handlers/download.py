@@ -3,15 +3,27 @@ import asyncio
 import time
 import requests
 import subprocess
+import re
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from datetime import datetime
 import yt_dlp
 from yt_dlp.utils import DownloadError
 import logging
 
 # ThreadPoolExecutor for async subprocess execution
 executor = ThreadPoolExecutor(max_workers=5)
+
+# ===== Per-user cancel download support =====
+ACTIVE_DOWNLOADS = {}  # user_id -> asyncio.Task
+USER_SEMAPHORE = defaultdict(lambda: asyncio.Semaphore(2))  # max 2 concurrent per user
+
+# ===== Batch YouTube download support =====
+YOUTUBE_REGEX = re.compile(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+))')
+BATCH_MAX_URLS = 6
+PER_USER_BATCH_CONCURRENCY = 2
 
 from database import (
     is_subscribed,
@@ -156,40 +168,62 @@ def is_adult_content(url: str, title: str = "") -> bool:
     
     return False
 
-async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, user, video_info: dict, file_path: str):
-    """إرسال سجل التحميل إلى قناة اللوج"""
+async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message):
+    """إرسال سجل التحميل إلى قناة اللوج - forward-only (no re-upload)"""
     if not LOG_CHANNEL_ID:
+        return
+
+    try:
+        log_channel_id = int(LOG_CHANNEL_ID)
+    except (ValueError, TypeError):
+        logger.error(f"❌ LOG_CHANNEL_ID غير صحيح: {LOG_CHANNEL_ID}")
         return
 
     user_id = user.id
     user_name = user.full_name
-    username = f"@{user.username}" if user.username else "لا يوجد"
-    
+    username = f"@{user.username}" if user.username else "مجهول"
+
     video_title = video_info.get('title', 'N/A')
     video_url = video_info.get('webpage_url', 'N/A')
     duration = video_info.get('duration', 0)
-    filesize = video_info.get('filesize', 0) or video_info.get('filesize_approx', 0)
 
-    size_mb = filesize / (1024 * 1024) if filesize else 0
-    
-    log_caption = (
-        f"✅ تحميل جديد\n\n"
-        f"👤 بواسطة: {user_name}\n"
-        f"🆔 ID: {user_id}\n"
-        f"🔗 Username: {username}\n\n"
-        f"🎬 العنوان: {video_title}\n"
-        f"⏱️ المدة: {duration}s\n"
-        f"📦 الحجم: {size_mb:.2f} MB\n"
-        f"🌐 الرابط: {video_url}"
-    )
+    # حساب حجم الملف
+    try:
+        file_size_bytes = os.path.getsize(file_path)
+        size_mb = file_size_bytes / (1024 * 1024)
+    except:
+        size_mb = 0
 
     try:
-        with open(file_path, 'rb') as video_file:
-            await context.bot.send_video(
-                chat_id=LOG_CHANNEL_ID,
-                video=video_file,
-                caption=log_caption[:1024]
-            )
+        # 1) Forward the video message to logs channel (no re-upload)
+        forwarded = await context.bot.forward_message(
+            chat_id=log_channel_id,
+            from_chat_id=update.effective_chat.id,
+            message_id=sent_message.message_id
+        )
+
+        # 2) Send info reply under forwarded video
+        info_text = (
+            f"🎬 *فيديو جديد تم معالجته*\n\n"
+            f"👤 المستخدم: @{username} ({user_id})\n"
+            f"🔗 الرابط: [اضغط للفتح]({video_url})\n"
+            f"🏷️ العنوان: {video_title[:100]}\n"
+            f"📦 الحجم: {size_mb:.2f} MB\n"
+            f"⏱️ المدة: {duration}s\n"
+            f"🕒 الوقت: {datetime.utcnow().strftime('%Y-%m-%d — %H:%M UTC')}\n\n"
+            f"🎥 الفيديو مرفق أعلاه مباشرة."
+        )
+
+        await context.bot.send_message(
+            chat_id=log_channel_id,
+            text=info_text,
+            parse_mode="Markdown",
+            reply_to_message_id=forwarded.message_id,
+            disable_web_page_preview=True
+        )
+
+        logger.info(f"✅ تم إرسال الفيديو والمعلومات إلى قناة السجلات (forward-only)")
+
     except Exception as e:
         log_warning(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}", module="handlers/download.py")
 
@@ -798,22 +832,22 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     duration=duration
                 )
 
-                # إرسال تقرير احترافي لقناة الفيديوهات
-                try:
-                    video_title = info_dict.get('title', 'بدون عنوان')
-                    video_size = format_file_size(os.path.getsize(final_video_path))
-                    username = user.username if user.username else user.first_name
-
-                    send_video_report(
-                        user_id=user_id,
-                        username=username,
-                        url=url,
-                        title=video_title,
-                        size=video_size,
-                        video_path=final_video_path
-                    )
-                except Exception as e:
-                    log_warning(f"❌ فشل إرسال تقرير الفيديو: {e}", module="handlers/download.py")
+                # إرسال تقرير احترافي لقناة الفيديوهات - DISABLED to avoid duplicates
+                # Now using forward-only send_log_to_channel instead
+                # try:
+                #     video_title = info_dict.get('title', 'بدون عنوان')
+                #     video_size = format_file_size(os.path.getsize(final_video_path))
+                #     username = user.username if user.username else user.first_name
+                #     send_video_report(
+                #         user_id=user_id,
+                #         username=username,
+                #         url=url,
+                #         title=video_title,
+                #         size=video_size,
+                #         video_path=final_video_path
+                #     )
+                # except Exception as e:
+                #     log_warning(f"❌ فشل إرسال تقرير الفيديو: {e}", module="handlers/download.py")
         
         logger.info(f"✅ تم الإرسال بنجاح")
 
@@ -831,7 +865,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
                 )
         
-        await send_log_to_channel(context, user, info_dict, final_video_path)
+        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message)
         
         # تسجيل الإحصائيات - تحميل ناجح
         from database import record_download_attempt
@@ -1042,3 +1076,112 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"✅ Twitter/X\n"
                 f"✅ +1000 موقع آخر"
             )
+
+# ===== Per-user cancel download =====
+async def cancel_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء التحميل الجاري للمستخدم"""
+    user_id = update.effective_user.id
+    task = ACTIVE_DOWNLOADS.get(user_id)
+
+    if task and not task.done():
+        task.cancel()
+        await update.effective_message.reply_text("🛑 طلب الإلغاء تم إرساله. سيتم إيقاف التحميل.")
+        logger.info(f"⛔ المستخدم {user_id} ألغى التحميل")
+    else:
+        await update.effective_message.reply_text("ℹ️ لا يوجد تحميل جارٍ لحسابك حالياً.")
+
+# ===== Batch YouTube download (up to 6 links) =====
+async def handle_batch_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج تحميل دفعات من روابط YouTube (حتى 6 روابط)"""
+    text = (update.message.text or "").strip()
+    urls = YOUTUBE_REGEX.findall(text)
+
+    if not urls:
+        await update.message.reply_text(
+            "📥 **تحميل دفعات YouTube**\n\n"
+            "أرسل حتى 6 روابط يوتيوب في رسالة واحدة لتحميلها على دفعات.\n\n"
+            "مثال:\n"
+            "https://youtube.com/watch?v=xxxxx\n"
+            "https://youtu.be/yyyyy\n"
+            "https://youtube.com/watch?v=zzzzz",
+            parse_mode="Markdown"
+        )
+        return
+
+    urls = urls[:BATCH_MAX_URLS]
+    user_id = update.effective_user.id
+    user = update.effective_user
+
+    # Check if user has an active download
+    if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
+        await update.message.reply_text("⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.")
+        return
+
+    sem_user = USER_SEMAPHORE[user_id]
+    sem_batch = asyncio.Semaphore(PER_USER_BATCH_CONCURRENCY)
+
+    await update.message.reply_text(
+        f"🔰 بدء الدفعة ({len(urls)}/{BATCH_MAX_URLS})...\n\n"
+        f"يمكنك إرسال /cancel لإلغاء الدفعة الحالية."
+    )
+
+    # Track batch download task
+    async def _batch_download_flow():
+        async with sem_user:
+            try:
+                async def process_one(url_to_download, idx):
+                    async with sem_batch:
+                        if ACTIVE_DOWNLOADS.get(user_id) and ACTIVE_DOWNLOADS[user_id].cancelled():
+                            logger.info(f"⛔ الدفعة ملغاة للمستخدم {user_id}")
+                            return
+
+                        try:
+                            logger.info(f"📥 معالجة رابط {idx+1}/{len(urls)}: {url_to_download}")
+
+                            # Reuse existing download logic
+                            processing_message = await update.message.reply_text(f"🔍 جاري التحليل ({idx+1}/{len(urls)})...")
+
+                            ydl_opts = get_ydl_opts_for_platform(url_to_download)
+                            ydl_opts['skip_download'] = True
+
+                            loop = asyncio.get_event_loop()
+
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url_to_download, download=False))
+
+                            await processing_message.delete()
+
+                            # Use show_quality_menu or download directly with best quality
+                            await show_quality_menu(update, context, url_to_download, info_dict)
+
+                        except asyncio.CancelledError:
+                            logger.info(f"⛔ تم إلغاء التحميل {idx+1}")
+                            raise
+                        except Exception as e:
+                            logger.error(f"❌ خطأ في تحميل الرابط {idx+1}: {e}")
+                            await update.message.reply_text(f"❌ فشل تحميل الرابط {idx+1}: {url_to_download[:50]}")
+
+                tasks = [asyncio.create_task(process_one(u, i)) for i, u in enumerate(urls)]
+
+                try:
+                    await asyncio.gather(*tasks, return_exceptions=False)
+                except asyncio.CancelledError:
+                    for t in tasks:
+                        if not t.done():
+                            t.cancel()
+                    raise
+
+                await update.message.reply_text("✅ اكتملت الدفعة.")
+
+            except asyncio.CancelledError:
+                try:
+                    await update.message.reply_text("⛔ تم إلغاء الدفعة بناءً على طلبك.")
+                except Exception:
+                    pass
+                raise
+            finally:
+                if ACTIVE_DOWNLOADS.get(user_id) is task:
+                    ACTIVE_DOWNLOADS.pop(user_id, None)
+
+    task = asyncio.create_task(_batch_download_flow(), name=f"batch_download:{user_id}")
+    ACTIVE_DOWNLOADS[user_id] = task
