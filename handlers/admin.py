@@ -1617,4 +1617,5 @@ admin_conv_handler = ConversationHandler(
         ],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
+    per_message=True
 )
