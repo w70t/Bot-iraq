@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=3)
 
 # حالات المحادثة
-MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE = range(4)
+MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE, AWAITING_CUSTOM_PRICE = range(5)
 
 async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج زر Admin Panel من الأزرار التفاعلية"""
@@ -1342,154 +1342,309 @@ async def library_reset_stats(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await library_stats(update, context)
 
 # ═══════════════════════════════════════════════════════════════
-#  VIP Subscription Control Panel - Mission 5
+#  VIP Subscription Control Panel - Redesigned (Arabic Only)
 # ═══════════════════════════════════════════════════════════════
 
 async def show_vip_control_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض لوحة التحكم بنظام الاشتراك VIP"""
+    """عرض لوحة التحكم بنظام الاشتراك - عربي فقط"""
     query = update.callback_query
     await query.answer()
 
+    from database import get_subscription_price
+    from lang import get_text
+
     # جلب الحالة الحالية
     sub_enabled = is_subscription_enabled()
-    welcome_enabled = is_welcome_broadcast_enabled()
+    notifications_enabled = is_welcome_broadcast_enabled()
+    current_price = get_subscription_price()
 
     # رموز الحالة
-    sub_icon = "✅ Enabled" if sub_enabled else "🚫 Disabled"
-    welcome_icon = "✅ Enabled" if welcome_enabled else "🚫 Disabled"
+    sub_status = "✅ مفعّل" if sub_enabled else "❌ معطّل"
+    notif_status = "✅ مفعّل" if notifications_enabled else "❌ معطّل"
 
     message_text = (
-        "💎 **لوحة التحكم بالاشتراك / Subscription Control Panel**\n\n"
-        "📊 **الحالة الحالية / Current Status:**\n"
-        f"💎 الاشتراك / Subscription: {sub_icon}\n"
-        f"💬 رسالة الترحيب / Welcome Broadcast: {welcome_icon}\n\n"
-        "اختر الإجراء المطلوب:"
+        "💎 **لوحة التحكم بالاشتراك**\n\n"
+        "⚙️ **الإعدادات الحالية:**\n"
+        f"📊 الحالة: {sub_status}\n"
+        f"💰 السعر الحالي: ${current_price} شهرياً\n"
+        f"🔔 إشعار المستخدمين: {notif_status}\n\n"
+        "📌 **اختر الإجراء المطلوب:**"
     )
 
     keyboard = [
-        [InlineKeyboardButton("✅ تفعيل الاشتراك / Enable Subscriptions", callback_data="vip_enable_sub")],
-        [InlineKeyboardButton("❌ إيقاف الاشتراك / Disable Subscriptions", callback_data="vip_disable_sub")],
-        [InlineKeyboardButton("💬 تفعيل/إلغاء رسالة الترحيب / Toggle Welcome", callback_data="vip_toggle_welcome")],
-        [InlineKeyboardButton("📊 عرض الحالة الحالية / Show Current Status", callback_data="vip_show_status")],
-        [InlineKeyboardButton("🔙 العودة / Back", callback_data="admin_back")]
+        [InlineKeyboardButton("✅ تفعيل الاشتراك", callback_data="sub_enable")],
+        [InlineKeyboardButton("❌ إيقاف الاشتراك", callback_data="sub_disable")],
+        [InlineKeyboardButton("💰 تغيير السعر", callback_data="sub_change_price")],
+        [InlineKeyboardButton("🔔 تفعيل / تعطيل الإشعارات", callback_data="sub_toggle_notif")],
+        [InlineKeyboardButton("↩️ العودة للقائمة الرئيسية", callback_data="admin_back")]
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # فحص إذا كانت الرسالة مختلفة قبل التعديل
     try:
-        if query.message.text != message_text:
-            await query.edit_message_text(
-                message_text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
+        await query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
     except Exception as e:
-        # إذا فشل التعديل، نتجاهل الخطأ
         logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
 
     return MAIN_MENU
 
 
-async def toggle_subscription_enabled(update: Update, context: ContextTypes.DEFAULT_TYPE, enable: bool):
-    """تفعيل أو إيقاف نظام الاشتراك"""
+## معالجات الأزرار مع نظام التأكيد
+
+async def handle_sub_enable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تأكيد تفعيل الاشتراك"""
     query = update.callback_query
     await query.answer()
 
-    # حفظ التغيير في قاعدة البيانات
-    success = set_subscription_enabled(enable)
-
-    if not success:
-        await query.answer("❌ فشل حفظ التغيير!", show_alert=True)
-        return MAIN_MENU
-
-    # الحالة الجديدة
-    status_ar = "✅ مفعّل" if enable else "❌ معطّل"
-    status_en = "✅ Enabled" if enable else "❌ Disabled"
-
-    # إرسال تقرير إلى قناة السجلات
-    import os
-    from telegram import Bot
-
-    LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
-    admin_username = query.from_user.username or "Unknown"
-    timestamp = datetime.now().strftime("%H:%M — %d-%m-%Y")
-
-    if LOG_CHANNEL_ID:
-        try:
-            bot = context.bot
-            log_text = (
-                "🧭 *تغيير حالة نظام الاشتراك / Subscription Status Changed*\n"
-                "━━━━━━━━━━━━━━━━━━\n"
-                f"👤 المسؤول / Admin: @{admin_username}\n"
-                f"💠 الحالة الجديدة / New Status: {status_en}\n"
-                f"🕒 الوقت / Time: {timestamp}\n"
-                "━━━━━━━━━━━━━━━━━━"
-            )
-            await bot.send_message(
-                chat_id=LOG_CHANNEL_ID,
-                text=log_text,
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            log_warning(f"فشل إرسال تقرير الاشتراك إلى القناة: {e}", module="handlers/admin.py")
-
-    # إرسال رسالة ترحيب لجميع المستخدمين إذا تم التفعيل
-    if enable and is_welcome_broadcast_enabled():
-        from database import get_all_users
-        all_users = get_all_users()
-        success_count = 0
-        failed_count = 0
-
-        welcome_text = (
-            "💎 *نظام الاشتراك VIP تم تفعيله! / VIP Subscription System Enabled!*\n\n"
-            "✨ ستحصل قريباً على مزايا إضافية مثل:\n"
-            "🎞️ تحميل أسرع، 💬 دعم مباشر، 🎁 هدايا خاصة\n"
-            "📢 تابع القناة الرسمية لمزيد من التفاصيل 🔗"
-        )
-
-        for user in all_users:
-            try:
-                await context.bot.send_message(
-                    chat_id=user['user_id'],
-                    text=welcome_text,
-                    parse_mode='Markdown'
-                )
-                success_count += 1
-            except Exception as e:
-                failed_count += 1
-                log_warning(f"فشل إرسال رسالة ترحيب لـ {user['user_id']}: {e}", module="handlers/admin.py")
-
-        broadcast_result = f"\n📢 تم إرسال رسالة ترحيب: ✅ {success_count} | ❌ {failed_count}"
-    else:
-        broadcast_result = ""
-
-    # تأكيد خاص للأدمن
-    confirmation_text = (
-        "✅ *تم حفظ التغيير بنجاح! / Change saved successfully!*\n\n"
-        f"💎 الحالة الجديدة / New Status: {status_en}\n"
-        "📦 تم تحديث الإعدادات في قاعدة البيانات (MongoDB)"
-        f"{broadcast_result}"
+    message_text = (
+        "⚙️ **هل تريد بالتأكيد تفعيل نظام الاشتراك؟**\n\n"
+        "✅ سيظهر زر الاشتراك VIP لجميع المستخدمين.\n"
+        "📢 سيتم إرسال إشعار للمستخدمين (إذا كان مفعلاً)."
     )
 
-    await query.answer("✅ تم الحفظ بنجاح!", show_alert=True)
+    keyboard = [
+        [InlineKeyboardButton("✅ نعم، قم بالتفعيل", callback_data="sub_enable_yes")],
+        [InlineKeyboardButton("❌ لا، إلغاء", callback_data="sub_action_cancel")],
+    ]
 
-    # العودة إلى لوحة VIP
-    await show_vip_control_panel(update, context)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
 
 
-async def handle_vip_enable_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تفعيل الاشتراك"""
-    return await toggle_subscription_enabled(update, context, True)
+async def handle_sub_disable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تأكيد إيقاف الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    message_text = (
+        "⚙️ **هل تريد بالتأكيد إيقاف نظام الاشتراك؟**\n\n"
+        "❌ سيتم إخفاء زر الاشتراك من القائمة الرئيسية.\n"
+        "🔒 لن يتمكن المستخدمون من رؤية الاشتراك VIP."
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ نعم، قم بالإيقاف", callback_data="sub_disable_yes")],
+        [InlineKeyboardButton("❌ لا، إلغاء", callback_data="sub_action_cancel")],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
 
 
-async def handle_vip_disable_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إيقاف الاشتراك"""
-    return await toggle_subscription_enabled(update, context, False)
+async def handle_sub_enable_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تنفيذ تفعيل الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    success = set_subscription_enabled(True)
+
+    if success:
+        await query.answer("✅ تم تفعيل نظام الاشتراك بنجاح!", show_alert=True)
+
+        # إرسال إشعار للمستخدمين إذا كان مفعلاً
+        if is_welcome_broadcast_enabled():
+            from database import get_all_users
+            all_users = get_all_users()
+
+            welcome_text = (
+                "💎 **نظام الاشتراك VIP تم تفعيله!**\n\n"
+                "✨ ستحصل قريباً على مزايا إضافية مثل:\n"
+                "🎞️ تحميل أسرع، 💬 دعم مباشر، 🎁 هدايا خاصة\n"
+                "📢 تابع القناة الرسمية @iraq_7kmmy لمزيد من التفاصيل 🔗"
+            )
+
+            for user in all_users[:10]:  # أول 10 فقط لتجنب البطء
+                try:
+                    await context.bot.send_message(
+                        chat_id=user['user_id'],
+                        text=welcome_text,
+                        parse_mode='Markdown'
+                    )
+                except:
+                    pass
+    else:
+        await query.answer("❌ فشل تفعيل الاشتراك!", show_alert=True)
+
+    return await show_vip_control_panel(update, context)
 
 
-async def toggle_welcome_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تفعيل أو إيقاف رسالة الترحيب"""
+async def handle_sub_disable_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تنفيذ إيقاف الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    success = set_subscription_enabled(False)
+
+    if success:
+        await query.answer("❌ تم إيقاف نظام الاشتراك!", show_alert=True)
+    else:
+        await query.answer("❌ فشل إيقاف الاشتراك!", show_alert=True)
+
+    return await show_vip_control_panel(update, context)
+
+
+async def handle_sub_action_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء الإجراء"""
+    query = update.callback_query
+    await query.answer("❌ تم إلغاء الإجراء", show_alert=False)
+
+    return await show_vip_control_panel(update, context)
+
+
+async def handle_sub_change_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة تغيير السعر"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_subscription_price
+    current_price = get_subscription_price()
+
+    message_text = (
+        "💰 **اختر السعر المناسب:**\n\n"
+        f"السعر الحالي: ${current_price} شهرياً\n\n"
+        "اختر سعر من القائمة أو أدخل سعر مخصص:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("$1 شهرياً", callback_data="sub_price_1")],
+        [InlineKeyboardButton("$3 شهرياً (موصى به)", callback_data="sub_price_3")],
+        [InlineKeyboardButton("$5 شهرياً", callback_data="sub_price_5")],
+        [InlineKeyboardButton("💵 سعر مخصص", callback_data="sub_price_custom")],
+        [InlineKeyboardButton("↩️ العودة", callback_data="admin_vip_control")],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def handle_sub_set_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تعيين سعر محدد"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import set_subscription_price
+
+    # استخراج السعر من callback_data
+    price_str = query.data.replace("sub_price_", "")
+
+    if price_str == "custom":
+        # طلب إدخال سعر مخصص
+        message_text = (
+            "💵 **أدخل السعر المخصص:**\n\n"
+            "📝 مثال: 7\n"
+            "⚠️ أدخل رقم فقط (بالدولار)\n\n"
+            "💡 اكتب السعر وأرسله الآن:"
+        )
+
+        keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="sub_change_price")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+
+        # حفظ الحالة لاستقبال السعر المخصص
+        context.user_data['awaiting_price'] = True
+
+        return AWAITING_CUSTOM_PRICE
+
+    try:
+        price = float(price_str)
+        success = set_subscription_price(price)
+
+        if success:
+            await query.answer(f"✅ تم تحديث السعر إلى ${price} شهرياً!", show_alert=True)
+        else:
+            await query.answer("❌ فشل تحديث السعر!", show_alert=True)
+    except ValueError:
+        await query.answer("❌ سعر غير صحيح!", show_alert=True)
+
+    return await show_vip_control_panel(update, context)
+
+
+async def receive_custom_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال السعر المخصص"""
+    if not context.user_data.get('awaiting_price'):
+        return MAIN_MENU
+
+    from database import set_subscription_price
+
+    price_text = update.message.text.strip()
+
+    try:
+        price = float(price_text)
+
+        if price <= 0:
+            await update.message.reply_text(
+                "❌ **السعر غير صحيح!**\n\n✅ أدخل رقم موجب (مثال: 3)",
+                parse_mode='Markdown'
+            )
+            return AWAITING_CUSTOM_PRICE
+
+        success = set_subscription_price(price)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ **تم تحديث السعر بنجاح!**\n\n💰 السعر الجديد: ${price} شهرياً",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ **فشل تحديث السعر!** يرجى المحاولة مرة أخرى.",
+                parse_mode='Markdown'
+            )
+
+        # حذف الحالة
+        context.user_data.pop('awaiting_price', None)
+
+        # العودة للوحة التحكم
+        keyboard = [[InlineKeyboardButton("↩️ العودة للوحة التحكم", callback_data="admin_vip_control")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            "اختر الإجراء التالي:",
+            reply_markup=reply_markup
+        )
+
+        return MAIN_MENU
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ **السعر غير صحيح!**\n\n✅ أدخل رقم فقط (مثال: 3)",
+            parse_mode='Markdown'
+        )
+        return AWAITING_CUSTOM_PRICE
+
+
+async def handle_sub_toggle_notif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبديل حالة الإشعارات"""
     query = update.callback_query
     await query.answer()
 
@@ -1501,57 +1656,12 @@ async def toggle_welcome_broadcast(update: Update, context: ContextTypes.DEFAULT
     success = set_welcome_broadcast_enabled(new_status)
 
     if success:
-        status_text = "✅ مفعّلة / Enabled" if new_status else "❌ معطّلة / Disabled"
-        await query.answer(f"✅ رسالة الترحيب الآن: {status_text}", show_alert=True)
+        status_text = "✅ مفعّلة" if new_status else "❌ معطّلة"
+        await query.answer(f"🔔 الإشعارات الآن: {status_text}", show_alert=True)
     else:
-        await query.answer("❌ فشل حفظ التغيير!", show_alert=True)
+        await query.answer("❌ فشل تغيير حالة الإشعارات!", show_alert=True)
 
-    # العودة إلى لوحة VIP
     return await show_vip_control_panel(update, context)
-
-
-async def show_current_vip_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض الحالة الحالية لنظام الاشتراك"""
-    query = update.callback_query
-    await query.answer()
-
-    from database import get_all_users
-
-    # جلب الحالة الحالية
-    sub_enabled = is_subscription_enabled()
-    welcome_enabled = is_welcome_broadcast_enabled()
-    all_users = get_all_users()
-    total_users = len(all_users)
-
-    # رموز الحالة
-    sub_icon = "✅ Enabled" if sub_enabled else "🚫 Disabled"
-    welcome_icon = "✅ Enabled" if welcome_enabled else "🚫 Disabled"
-
-    status_text = (
-        "📊 *الحالة الحالية / Current Status*\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"💎 الاشتراك / Subscription: {sub_icon}\n"
-        f"💬 رسالة الترحيب / Welcome: {welcome_icon}\n"
-        f"👥 عدد المستخدمين / Total Users: {total_users}\n\n"
-        f"🕒 الوقت / Time: {datetime.now().strftime('%H:%M — %d-%m-%Y')}\n"
-        "━━━━━━━━━━━━━━━━━━"
-    )
-
-    keyboard = [[InlineKeyboardButton("🔙 العودة / Back", callback_data="admin_vip_control")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # فحص إذا كانت الرسالة مختلفة قبل التعديل
-    try:
-        if query.message.text != status_text:
-            await query.edit_message_text(
-                status_text,
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
-    except Exception as e:
-        logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
-
-    return MAIN_MENU
 
 
 async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1601,12 +1711,16 @@ admin_conv_handler = ConversationHandler(
             # معالجات المنصات والموافقة
             CallbackQueryHandler(handle_platform_toggle, pattern='^platform_(enable|disable)_'),
             CallbackQueryHandler(handle_approval_action, pattern='^(approve|deny)_'),
-            # معالجات VIP Control - Mission 5
+            # معالجات VIP Control - Redesigned
             CallbackQueryHandler(show_vip_control_panel, pattern='^admin_vip_control$'),
-            CallbackQueryHandler(handle_vip_enable_sub, pattern='^vip_enable_sub$'),
-            CallbackQueryHandler(handle_vip_disable_sub, pattern='^vip_disable_sub$'),
-            CallbackQueryHandler(toggle_welcome_broadcast, pattern='^vip_toggle_welcome$'),
-            CallbackQueryHandler(show_current_vip_status, pattern='^vip_show_status$'),
+            CallbackQueryHandler(handle_sub_enable_confirm, pattern='^sub_enable$'),
+            CallbackQueryHandler(handle_sub_disable_confirm, pattern='^sub_disable$'),
+            CallbackQueryHandler(handle_sub_enable_yes, pattern='^sub_enable_yes$'),
+            CallbackQueryHandler(handle_sub_disable_yes, pattern='^sub_disable_yes$'),
+            CallbackQueryHandler(handle_sub_action_cancel, pattern='^sub_action_cancel$'),
+            CallbackQueryHandler(handle_sub_change_price, pattern='^sub_change_price$'),
+            CallbackQueryHandler(handle_sub_set_price, pattern='^sub_price_'),
+            CallbackQueryHandler(handle_sub_toggle_notif, pattern='^sub_toggle_notif$'),
             # Mission 10: Download Logs
             CallbackQueryHandler(show_download_logs, pattern='^admin_download_logs$'),
             # القائمة القديمة
@@ -1627,6 +1741,11 @@ admin_conv_handler = ConversationHandler(
         ],
         BROADCAST_MESSAGE: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, send_broadcast),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_CUSTOM_PRICE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_price),
+            CallbackQueryHandler(handle_sub_change_price, pattern='^sub_change_price$'),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },
