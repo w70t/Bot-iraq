@@ -370,7 +370,15 @@ def main() -> None:
     # تحميل الإعدادات
     load_config()
     config = get_config()
-    
+
+    # إنشاء المجلدات الضرورية إذا لم تكن موجودة
+    try:
+        os.makedirs("videos", exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
+        logger.info("✅ تم التحقق من المجلدات الضرورية (videos, logs)")
+    except Exception as e:
+        logger.warning(f"⚠️ فشل إنشاء المجلدات: {e}")
+
     # التحقق من قاعدة البيانات (اختبار بدون قاعدة البيانات)
     try:
         init_db()

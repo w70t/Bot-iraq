@@ -14,10 +14,6 @@ from telegram import BotCommand, BotCommandScopeChat
 from telegram.ext import Application
 import json
 
-# ⭐ تحميل متغيرات البيئة
-from dotenv import load_dotenv
-load_dotenv()
-
 # تهيئة الرسائل والإعدادات كمتغيرات عامة
 MESSAGES = {}
 CONFIG = {}
@@ -415,10 +411,15 @@ async def setup_bot_menu(bot):
 
     await bot.set_my_commands(user_commands_ar)
     logger.info("✅ تم تعيين قائمة الأوامر العامة.")
-    
+
+    # Parse ADMIN_IDs safely
     admin_ids_str = os.getenv("ADMIN_ID", "")
-    admin_ids = [int(admin_id) for admin_id in admin_ids_str.split(',') if admin_id.strip()]
-    
+    try:
+        admin_ids = [int(x.strip()) for x in admin_ids_str.split(',') if x.strip().isdigit()]
+    except (ValueError, AttributeError) as e:
+        logger.error(f"❌ Failed to parse ADMIN_ID: {e}")
+        admin_ids = []
+
     for admin_id in admin_ids:
         try:
             await bot.set_my_commands(admin_commands_ar, scope=BotCommandScopeChat(chat_id=admin_id))

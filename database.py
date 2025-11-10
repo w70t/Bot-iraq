@@ -5,16 +5,21 @@ import string
 from pymongo import MongoClient
 from datetime import datetime, timedelta
 
-# ⭐ تحميل متغيرات البيئة
-from dotenv import load_dotenv
-load_dotenv()
-
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # الاتصال بقاعدة البيانات
 MONGODB_URI = os.getenv("MONGODB_URI")
 ADMIN_IDS_STR = os.getenv("ADMIN_ID", "")
+
+# Parse ADMIN_IDS safely
+try:
+    ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
+    if not ADMIN_IDS:
+        logger.warning("⚠️ No valid ADMIN_IDs found in .env. Admin functions will be disabled.")
+except (ValueError, AttributeError) as e:
+    logger.error(f"❌ Failed to parse ADMIN_ID from .env: {e}")
+    ADMIN_IDS = []
 
 try:
     if not MONGODB_URI:
@@ -48,10 +53,33 @@ def init_db():
         return False
     return True
 
+def ensure_db_connection():
+    """التحقق من الاتصال بقاعدة البيانات قبل العمليات"""
+    if db is None or users_collection is None or settings_collection is None:
+        logger.error("❌ Database connection lost or not initialized")
+        try:
+            from utils import send_critical_log
+            send_critical_log("Database connection check failed", module="database.py")
+        except:
+            pass
+        return False
+
+    try:
+        # Quick ping to verify connection is alive
+        client.admin.command('ping')
+        return True
+    except Exception as e:
+        logger.error(f"❌ Database ping failed: {e}")
+        try:
+            from utils import send_critical_log
+            send_critical_log(f"Database ping failed: {str(e)}", module="database.py")
+        except:
+            pass
+        return False
+
 def is_admin(user_id: int) -> bool:
     """التحقق من صلاحيات المدير"""
-    admin_ids = [int(admin_id.strip()) for admin_id in ADMIN_IDS_STR.split(',') if admin_id.strip()]
-    return user_id in admin_ids
+    return user_id in ADMIN_IDS
 
 def add_user(user_id: int, username: str = None, full_name: str = None, language: str = 'ar'):
     """إضافة مستخدم جديد"""
@@ -81,6 +109,8 @@ def add_user(user_id: int, username: str = None, full_name: str = None, language
 
 def get_user(user_id: int):
     """جلب بيانات مستخدم"""
+    if not ensure_db_connection():
+        return None
     try:
         user = users_collection.find_one({'user_id': user_id})
         return user
@@ -90,6 +120,8 @@ def get_user(user_id: int):
 
 def get_all_users():
     """جلب جميع المستخدمين"""
+    if not ensure_db_connection():
+        return []
     try:
         users = list(users_collection.find())
         return users
