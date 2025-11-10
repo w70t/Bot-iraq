@@ -21,7 +21,11 @@ from handlers.download import (
     handle_download,
     handle_quality_selection,
     cancel_download,
-    handle_batch_download
+    cancel_download_callback,
+    handle_batch_download,
+    handle_playlist_download,
+    handle_batch_quality_choice,
+    is_playlist_url
 )
 from handlers.admin import admin_conv_handler
 from handlers.account import account_info, test_subscription
@@ -373,6 +377,16 @@ def main() -> None:
         pattern="^download_cancel$"
     ))
 
+    # 7.5. Playlist handlers (cancel button, batch quality choice)
+    application.add_handler(CallbackQueryHandler(
+        cancel_download_callback,
+        pattern="^cancel:"
+    ))
+    application.add_handler(CallbackQueryHandler(
+        handle_batch_quality_choice,
+        pattern="^batch_quality:"
+    ))
+
     # 8. Handler لاختيار الجودة - النظام القديم (Callback Query)
     # هذا للتوافق مع النظام القديم - الأنماط العامة
     application.add_handler(CallbackQueryHandler(
@@ -405,11 +419,20 @@ def main() -> None:
     # 12. Handler للوحة تحكم الأدمن
     application.add_handler(admin_conv_handler)
 
+    # 12.5. Playlist URL handler (before general download handler)
+    async def playlist_or_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالج ذكي للتمييز بين playlist والروابط العادية"""
+        url = update.message.text.strip()
+        if is_playlist_url(url):
+            await handle_playlist_download(update, context)
+        else:
+            await handle_download(update, context)
+
     # 13. Handler لتحميل الفيديوهات من الروابط (يجب أن يكون الأخير)
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.Regex(r"https?://\S+"),
-            handle_download,
+            playlist_or_download,
         )
     )
     
