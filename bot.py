@@ -367,6 +367,33 @@ def main() -> None:
     except Exception as e:
         logger.warning(f"⚠️ Could not update yt-dlp: {e} - continuing anyway")
 
+    # تحقق من وجود cryptography (V5.0.1 Hotfix)
+    try:
+        from cryptography.fernet import Fernet
+        logger.info("✅ cryptography module verified (AES-256 ready)")
+    except ImportError:
+        logger.warning("⚠️ Missing dependency: cryptography")
+        logger.info("🔄 Installing cryptography automatically...")
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["pip", "install", "cryptography>=42.0.0"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=60
+            )
+            if result.returncode == 0:
+                logger.info("✅ cryptography installed successfully")
+                # Verify installation
+                from cryptography.fernet import Fernet
+                logger.info("✅ cryptography module verified (AES-256 ready)")
+            else:
+                logger.error("❌ Failed to install cryptography automatically")
+                logger.error("Please run manually: pip install cryptography>=42.0.0")
+        except Exception as install_error:
+            logger.error(f"❌ Auto-install failed: {install_error}")
+            logger.error("Please run manually: pip install cryptography>=42.0.0")
+
     # تحميل الإعدادات
     load_config()
     config = get_config()

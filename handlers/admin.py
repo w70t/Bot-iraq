@@ -2087,19 +2087,126 @@ async def show_general_limits_panel(update: Update, context: ContextTypes.DEFAUL
 
 
 async def handle_edit_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """طلب إدخال حد زمني جديد"""
+    """عرض أزرار الإعدادات المسبقة للحد الزمني (V5.0.1)"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_free_time_limit
+    current_limit = get_free_time_limit()
+
+    text = (
+        "🕒 **تعديل الحد الزمني**\n\n"
+        f"⏱️ الحد الحالي: **{current_limit} دقيقة**\n\n"
+        "اختر المدة الجديدة للمستخدمين غير المشتركين:\n\n"
+        "💡 **ملاحظة:**\n"
+        "• هذا الحد يحمي السيرفر من الحمل الزائد\n"
+        "• المشتركون VIP لديهم تحميل غير محدود ♾️\n"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton("3️⃣ دقائق", callback_data="set_limit_3"),
+            InlineKeyboardButton("🔟 دقائق", callback_data="set_limit_10")
+        ],
+        [
+            InlineKeyboardButton("3️⃣0️⃣ دقيقة", callback_data="set_limit_30"),
+            InlineKeyboardButton("6️⃣0️⃣ دقيقة", callback_data="set_limit_60")
+        ],
+        [
+            InlineKeyboardButton("♾️ غير محدود", callback_data="set_limit_unlimited")
+        ],
+        [
+            InlineKeyboardButton("✍️ إدخال يدوي", callback_data="set_limit_custom")
+        ],
+        [
+            InlineKeyboardButton("❌ إلغاء", callback_data="admin_general_limits")
+        ]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def handle_set_time_limit_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تطبيق الحد الزمني من الأزرار المسبقة (V5.0.1)"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import set_free_time_limit
+
+    # Extract limit value from callback_data
+    limit_value = query.data.replace("set_limit_", "")
+
+    if limit_value == "unlimited":
+        limit = -1  # -1 means unlimited
+        limit_text = "♾️ غير محدود"
+    else:
+        limit = int(limit_value)
+        limit_text = f"{limit} دقيقة"
+
+    # Update database
+    success = set_free_time_limit(limit)
+
+    if success:
+        # Log event
+        try:
+            import os
+            os.makedirs('logs', exist_ok=True)
+            with open('logs/limit_events.log', 'a', encoding='utf-8') as f:
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                admin_id = query.from_user.id
+                admin_name = query.from_user.username or query.from_user.first_name
+                f.write(f"[{timestamp}] Admin @{admin_name} ({admin_id}) changed time limit to: {limit_text}\n")
+        except Exception as e:
+            logger.error(f"Failed to log limit change: {e}")
+
+        await query.edit_message_text(
+            f"✅ **تم تحديث الحد الزمني بنجاح!**\n\n"
+            f"⏱️ المدة الجديدة: **{limit_text}** للأعضاء غير المشتركين\n\n"
+            f"💡 **ملاحظة:**\n"
+            f"• المشتركون VIP لديهم تحميل غير محدود\n"
+            f"• هذا الحد يحمي السيرفر من الحمل الزائد\n",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("↩️ العودة للقيود", callback_data="admin_general_limits")],
+                [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="admin_back")]
+            ])
+        )
+    else:
+        await query.edit_message_text(
+            "❌ **فشل تحديث الحد الزمني!**\n\nيرجى المحاولة مرة أخرى.",
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="edit_time_limit")]])
+        )
+
+    return MAIN_MENU
+
+
+async def handle_set_time_limit_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب إدخال يدوي للحد الزمني (V5.0.1)"""
     query = update.callback_query
     await query.answer()
 
     text = (
-        "🕒 **تعديل الحد الزمني**\n\n"
-        "📝 أدخل الحد الزمني الجديد للمستخدمين غير المشتركين (بالدقائق)\n\n"
-        "💡 مثال: 10 (يعني 10 دقائق)\n"
-        "⚠️ أدخل رقم صحيح فقط\n\n"
+        "✍️ **إدخال يدوي للحد الزمني**\n\n"
+        "📝 أدخل الحد الزمني الجديد (بالدقائق)\n\n"
+        "💡 **أمثلة:**\n"
+        "• 5 = خمس دقائق\n"
+        "• 15 = ربع ساعة\n"
+        "• 120 = ساعتين\n"
+        "• -1 = غير محدود ♾️\n\n"
         "اكتب الحد الزمني الجديد:"
     )
 
-    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_general_limits")]]
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="edit_time_limit")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
@@ -2691,6 +2798,10 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
             CallbackQueryHandler(handle_edit_time_limit, pattern='^edit_time_limit$'),
             CallbackQueryHandler(handle_edit_daily_limit, pattern='^edit_daily_limit$'),
+            # General Limits Presets (V5.0.1)
+            CallbackQueryHandler(handle_set_time_limit_preset, pattern='^set_limit_\d+$'),
+            CallbackQueryHandler(handle_set_time_limit_preset, pattern='^set_limit_unlimited$'),
+            CallbackQueryHandler(handle_set_time_limit_custom, pattern='^set_limit_custom$'),
             # Cookie Management System V5.0
             CallbackQueryHandler(show_cookie_management_panel, pattern='^admin_cookies$'),
             CallbackQueryHandler(show_cookie_status_detail, pattern='^cookie_status_detail$'),

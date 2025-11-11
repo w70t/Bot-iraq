@@ -31,6 +31,13 @@ YOUTUBE_REGEX = re.compile(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=[\w-]+
 BATCH_MAX_URLS = 6
 PER_USER_BATCH_CONCURRENCY = 2
 
+# ===== Server Load Monitoring (V5.0.1) =====
+from collections import deque
+LIMIT_REJECTIONS = deque(maxlen=50)  # Track last 50 rejections with timestamps
+LOAD_ALERT_THRESHOLD = 5  # Alert after 5 rejections
+LOAD_ALERT_WINDOW = 600  # Within 10 minutes (600 seconds)
+LAST_LOAD_ALERT = 0  # Timestamp of last alert to avoid spam
+
 from database import (
     is_subscribed,
     get_user,
@@ -55,6 +62,90 @@ VIDEO_PATH = 'videos'
 
 if not os.path.exists(VIDEO_PATH):
     os.makedirs(VIDEO_PATH)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Server Load Monitoring System (V5.0.1)
+# ═══════════════════════════════════════════════════════════════
+
+async def track_limit_rejection(context: ContextTypes.DEFAULT_TYPE, user_id: int, duration_minutes: float, limit_minutes: int, url: str):
+    """
+    Track when users are rejected due to time limit and alert admins if server load is high
+
+    Args:
+        context: Bot context
+        user_id: User ID who was rejected
+        duration_minutes: Duration of video they tried to download
+        limit_minutes: Current time limit
+        url: Video URL
+    """
+    global LAST_LOAD_ALERT
+
+    try:
+        current_time = time.time()
+
+        # Add rejection to tracking deque
+        LIMIT_REJECTIONS.append({
+            'timestamp': current_time,
+            'user_id': user_id,
+            'duration': duration_minutes,
+            'limit': limit_minutes,
+            'url': url
+        })
+
+        # Log to file
+        os.makedirs('logs', exist_ok=True)
+        with open('logs/limit_events.log', 'a', encoding='utf-8') as f:
+            log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"[{log_time}] User {user_id} rejected - tried {duration_minutes:.1f}min (limit={limit_minutes}min) - URL: {url[:50]}...\n")
+
+        # Count recent rejections within the time window
+        recent_rejections = [
+            r for r in LIMIT_REJECTIONS
+            if current_time - r['timestamp'] <= LOAD_ALERT_WINDOW
+        ]
+
+        # Check if we should alert admins
+        if len(recent_rejections) >= LOAD_ALERT_THRESHOLD:
+            # Avoid spamming - only alert once per 30 minutes
+            if current_time - LAST_LOAD_ALERT > 1800:  # 30 minutes
+                LAST_LOAD_ALERT = current_time
+
+                # Send alert to admins
+                admin_ids_str = os.getenv("ADMIN_IDS", "")
+                admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+
+                alert_message = (
+                    "⚠️ **تحذير: ضغط عالي على السيرفر!**\n\n"
+                    f"تم رفض **{len(recent_rejections)} طلبات تحميل** خلال آخر {LOAD_ALERT_WINDOW//60} دقائق\n"
+                    f"بسبب تجاوز الحد الزمني ({limit_minutes} دقيقة)\n\n"
+                    f"💡 **الإجراءات الممكنة:**\n"
+                    f"• زيادة الحد الزمني مؤقتاً\n"
+                    f"• ترقية موارد السيرفر\n"
+                    f"• مراقبة الاستخدام\n\n"
+                    f"📊 **إحصائيات:**\n"
+                    f"• متوسط مدة الفيديوهات المرفوضة: {sum(r['duration'] for r in recent_rejections)/len(recent_rejections):.1f} دقيقة\n"
+                    f"• أعلى مدة: {max(r['duration'] for r in recent_rejections):.1f} دقيقة"
+                )
+
+                for admin_id in admin_ids:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=alert_message,
+                            parse_mode='Markdown'
+                        )
+                        logger.info(f"✅ Sent load alert to admin {admin_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to send load alert to admin {admin_id}: {e}")
+
+                # Also log to file
+                with open('logs/limit_events.log', 'a', encoding='utf-8') as f:
+                    f.write(f"[{log_time}] LOAD ALERT: {len(recent_rejections)} rejections in {LOAD_ALERT_WINDOW//60} minutes\n")
+
+    except Exception as e:
+        logger.error(f"Error in track_limit_rejection: {e}")
+
 
 # ═══════════════════════════════════════════════════════════════
 #  Anime Quotes System (Arabic + English)
@@ -1639,14 +1730,26 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             free_time_limit = get_free_time_limit()  # جلب الحد من قاعدة البيانات (بالدقائق)
             max_free_duration = free_time_limit * 60  # تحويل إلى ثواني
             if not is_user_admin and not is_subscribed_user and duration and duration > max_free_duration:
+                # Track rejection for server load monitoring (V5.0.1)
+                duration_minutes = duration / 60
+                await track_limit_rejection(context, user_id, duration_minutes, free_time_limit, url)
+
+                # Show enhanced message to user
+                limit_text = "♾️ غير محدود" if free_time_limit == -1 else f"{free_time_limit} دقيقة"
+
                 keyboard = [[InlineKeyboardButton(
                     "⭐ اشترك الآن",
                     url="https://instagram.com/7kmmy"
                 )]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await processing_message.edit_text(
-                    f"⏰ الفيديو طويل! (أكثر من {free_time_limit} دقائق). اشترك لتحميل فيديوهات طويلة!",
-                    reply_markup=reply_markup
+                    f"⚠️ **عذراً، لا يمكنك تحميل مقاطع تتجاوز {limit_text}**\n\n"
+                    f"🎬 مدة الفيديو: {duration_minutes:.1f} دقيقة\n"
+                    f"⏱️ الحد المسموح: {limit_text}\n\n"
+                    f"🖥️ **السبب:** السيرفر لا يتحمل ملفات بهذا الطول\n\n"
+                    f"💡 **الحل:** اشترك للوصول إلى تحميل غير محدود ♾️",
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
                 )
                 return
         # إذا كان الاشتراك معطلاً، السماح بالتحميل بدون قيود
