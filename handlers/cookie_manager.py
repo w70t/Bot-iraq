@@ -8,6 +8,7 @@ import json
 import logging
 import asyncio
 import time
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 # Lazy import for cryptography - will be imported when needed
@@ -190,37 +191,47 @@ class CookieManager:
                     continue
 
                 # Parse cookie line: domain, flag, path, secure, expiration, name, value
-                parts = line.split('\t')
+                # Support both tabs and multiple spaces as delimiters (Safari Cookie-Editor compatibility)
+                parts = re.split(r'\t+|\s{2,}', line)
 
-                # Valid cookie must have at least 7 tab-separated fields
-                if len(parts) >= 7:
-                    domain = parts[0]
-                    flag = parts[1]
-                    path = parts[2]
-                    secure = parts[3]
-                    expiration = parts[4]
-                    name = parts[5]
-                    value = parts[6] if len(parts) > 6 else ''
+                # Valid cookie must have at least 6 fields (some exports omit the value field)
+                # Standard Netscape format: domain, flag, path, secure, expiration, name, value
+                if len(parts) >= 6:
+                    try:
+                        domain = parts[0].strip()
+                        flag = parts[1].strip() if len(parts) > 1 else 'TRUE'
+                        path = parts[2].strip() if len(parts) > 2 else '/'
+                        secure = parts[3].strip() if len(parts) > 3 else 'FALSE'
+                        expiration = parts[4].strip() if len(parts) > 4 else '0'
+                        name = parts[5].strip() if len(parts) > 5 else ''
+                        value = parts[6].strip() if len(parts) > 6 else ''
 
-                    # Validate basic cookie structure
-                    if domain and name:
-                        # Check expiration (skip expired cookies)
-                        try:
-                            exp_timestamp = int(expiration)
-                            current_timestamp = int(time.time())
+                        # Validate basic cookie structure
+                        if domain and name:
+                            # Check expiration (skip expired cookies)
+                            try:
+                                exp_timestamp = int(expiration)
+                                current_timestamp = int(time.time())
 
-                            if exp_timestamp > current_timestamp:
-                                # Reconstruct line with HttpOnly prefix if needed
-                                cookie_line = f"#HttpOnly_{line}" if httponly_flag else line
+                                if exp_timestamp > current_timestamp:
+                                    # Reconstruct line with HttpOnly prefix if needed
+                                    # Use tab-separated format for consistency with Netscape standard
+                                    cookie_line = f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}"
+                                    if httponly_flag:
+                                        cookie_line = f"#HttpOnly_{cookie_line}"
+                                    valid_lines.append(cookie_line)
+                                    cookie_count += 1
+                                else:
+                                    logger.debug(f"Skipped expired cookie: {name} (exp: {expiration})")
+                            except (ValueError, TypeError):
+                                # If expiration parsing fails, include the cookie anyway
+                                cookie_line = f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}"
+                                if httponly_flag:
+                                    cookie_line = f"#HttpOnly_{cookie_line}"
                                 valid_lines.append(cookie_line)
                                 cookie_count += 1
-                            else:
-                                logger.debug(f"Skipped expired cookie: {name}")
-                        except (ValueError, TypeError):
-                            # If expiration parsing fails, include the cookie anyway
-                            cookie_line = f"#HttpOnly_{line}" if httponly_flag else line
-                            valid_lines.append(cookie_line)
-                            cookie_count += 1
+                    except (IndexError, ValueError) as e:
+                        logger.debug(f"Skipped malformed cookie line: {line[:50]}... Error: {e}")
 
             # If no valid cookies found
             if cookie_count == 0:

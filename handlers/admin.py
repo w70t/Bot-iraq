@@ -2682,6 +2682,14 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                 f"💡 استخدم إضافة Cookie-Editor لتصدير الكوكيز"
             )
             context.user_data.pop('cookie_upload_platform', None)
+
+            # Provide navigation back to admin panel
+            await update.message.reply_text(
+                "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+                ]])
+            )
             return MAIN_MENU
 
         # Verify detected platform matches selected platform
@@ -2699,6 +2707,14 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                     f"❌ الرجاء اختيار المنصة الصحيحة"
                 )
                 context.user_data.pop('cookie_upload_platform', None)
+
+                # Provide navigation back to admin panel
+                await update.message.reply_text(
+                    "🔄 تم إعادة تعيين الحالة. يمكنك اختيار المنصة الصحيحة.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+                    ]])
+                )
                 return MAIN_MENU
 
             platform_match = f" ({detected_platform.capitalize()})"
@@ -2719,6 +2735,14 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                 f"حدث خطأ أثناء عملية التشفير"
             )
             context.user_data.pop('cookie_upload_platform', None)
+
+            # Provide navigation back to admin panel
+            await update.message.reply_text(
+                "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+                ]])
+            )
             return MAIN_MENU
 
         # Validate cookies
@@ -2771,6 +2795,14 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
             f"❌ حدث خطأ أثناء رفع الكوكيز:\n{str(e)}"
         )
         context.user_data.pop('cookie_upload_platform', None)
+
+        # Provide navigation back to admin panel
+        await update.message.reply_text(
+            "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+            ]])
+        )
         return MAIN_MENU
 
 
