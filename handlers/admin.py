@@ -2634,24 +2634,12 @@ async def handle_upload_cookie_button(update: Update, context: ContextTypes.DEFA
 
 
 async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة رفع الكوكيز للمنصة المحددة (V5.2 - Auto Parse & Extract)"""
+    """معالجة رفع الكوكيز للمنصة المحددة (V5.2 - Auto Parse & Extract + Auto Detection)"""
     platform = context.user_data.get('cookie_upload_platform')
-
-    if not platform:
-        await update.message.reply_text("❌ خطأ: لم يتم تحديد المنصة. الرجاء المحاولة مرة أخرى.")
-        return MAIN_MENU
+    auto_detect = False
 
     try:
         from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
-
-        # Get the actual cookie file name (handles linking)
-        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower(), platform.lower())
-
-        if cookie_file is None:
-            await update.message.reply_text(
-                f"❌ منصة {platform.capitalize()} لا تحتاج إلى كوكيز"
-            )
-            return MAIN_MENU
 
         status_msg = await update.message.reply_text("⏳ جاري معالجة الكوكيز...")
 
@@ -2665,12 +2653,46 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
             cookie_data = update.message.text
         else:
             await status_msg.edit_text("❌ يرجى إرسال ملف كوكيز أو لصق محتوى الملف")
-            return AWAITING_PLATFORM_COOKIE
+            return AWAITING_PLATFORM_COOKIE if platform else MAIN_MENU
+
+        # Auto-detect platform if not manually selected (V5.3 - Auto Detection)
+        if not platform:
+            # Check if this looks like Netscape cookie format
+            if "# Netscape HTTP Cookie File" in cookie_data or "facebook.com" in cookie_data or "instagram.com" in cookie_data or "tiktok.com" in cookie_data:
+                await status_msg.edit_text("🔍 تم اكتشاف كوكيز تلقائياً... جاري التحليل...")
+                auto_detect = True
+                logger.info("📦 Auto-detected Netscape cookie format in text message")
+            else:
+                await status_msg.edit_text("❌ خطأ: لم يتم تحديد المنصة. الرجاء المحاولة مرة أخرى.")
+                return MAIN_MENU
 
         # Parse and validate Netscape cookies (V5.2)
-        await status_msg.edit_text("🔍 جاري تحليل الكوكيز...")
+        if not auto_detect:
+            await status_msg.edit_text("🔍 جاري تحليل الكوكيز...")
 
         success, parsed_data, detected_platform, cookie_count = cookie_manager.parse_netscape_cookies(cookie_data)
+
+        # Use detected platform if auto-detecting
+        if auto_detect and detected_platform:
+            platform = detected_platform
+            logger.info(f"✅ Auto-detected platform: {platform}")
+
+        # Ensure platform is set before proceeding
+        if not platform:
+            await status_msg.edit_text(
+                "❌ فشل تحديد المنصة تلقائياً\n"
+                "الرجاء استخدام قائمة الإدارة لاختيار المنصة يدوياً"
+            )
+            return MAIN_MENU
+
+        # Get the actual cookie file name (handles linking)
+        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower(), platform.lower())
+
+        if cookie_file is None:
+            await status_msg.edit_text(
+                f"❌ منصة {platform.capitalize()} لا تحتاج إلى كوكيز"
+            )
+            return MAIN_MENU
 
         if not success or not parsed_data:
             await status_msg.edit_text(
