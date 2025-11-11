@@ -85,6 +85,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
         [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
         [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
+        [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
         [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
         [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
@@ -2036,6 +2037,212 @@ async def handle_confirm_resolve(update: Update, context: ContextTypes.DEFAULT_T
 
 
 # ═══════════════════════════════════════════════════════════════
+#  General Limits Control Panel
+# ═══════════════════════════════════════════════════════════════
+
+AWAITING_TIME_LIMIT = 10
+AWAITING_DAILY_LIMIT = 11
+
+async def show_general_limits_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة إعدادات القيود العامة"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_free_time_limit, get_daily_download_limit_setting
+
+    # جلب الإعدادات الحالية
+    time_limit = get_free_time_limit()
+    daily_limit = get_daily_download_limit_setting()
+
+    message_text = (
+        "⚙️ **إعدادات القيود العامة**\n\n"
+        f"🕒 الحد الزمني لغير المشتركين: **{time_limit} دقيقة**\n"
+        f"🔁 الحد اليومي المسموح به: **{daily_limit} مرات**\n\n"
+        "💡 **ملاحظات:**\n"
+        "• هذه القيود تطبق فقط على المستخدمين غير المشتركين\n"
+        "• المشتركون VIP لديهم حرية كاملة بلا قيود\n\n"
+        "اختر الإجراء المطلوب:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🕒 تعديل الحد الزمني", callback_data="edit_time_limit")],
+        [InlineKeyboardButton("🔁 تعديل الحد اليومي", callback_data="edit_daily_limit")],
+        [InlineKeyboardButton("↩️ العودة للقائمة الرئيسية", callback_data="admin_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    try:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
+
+    return MAIN_MENU
+
+
+async def handle_edit_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب إدخال حد زمني جديد"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "🕒 **تعديل الحد الزمني**\n\n"
+        "📝 أدخل الحد الزمني الجديد للمستخدمين غير المشتركين (بالدقائق)\n\n"
+        "💡 مثال: 10 (يعني 10 دقائق)\n"
+        "⚠️ أدخل رقم صحيح فقط\n\n"
+        "اكتب الحد الزمني الجديد:"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_general_limits")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    context.user_data['awaiting_time_limit'] = True
+
+    return AWAITING_TIME_LIMIT
+
+
+async def receive_time_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال الحد الزمني الجديد"""
+    if not context.user_data.get('awaiting_time_limit'):
+        return MAIN_MENU
+
+    from database import set_free_time_limit
+
+    limit_text = update.message.text.strip()
+
+    try:
+        limit = int(limit_text)
+
+        if limit < 0:
+            await update.message.reply_text(
+                "❌ **الحد الزمني غير صحيح!**\n\n✅ أدخل رقم موجب (مثال: 10)",
+                parse_mode='Markdown'
+            )
+            return AWAITING_TIME_LIMIT
+
+        success = set_free_time_limit(limit)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ **تم تحديث الحد الزمني بنجاح!**\n\n🕒 الحد الجديد: **{limit} دقيقة**",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ **فشل تحديث الحد الزمني!** يرجى المحاولة مرة أخرى.",
+                parse_mode='Markdown'
+            )
+
+        context.user_data.pop('awaiting_time_limit', None)
+
+        keyboard = [[InlineKeyboardButton("↩️ العودة للوحة القيود", callback_data="admin_general_limits")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            "اختر الإجراء التالي:",
+            reply_markup=reply_markup
+        )
+
+        return MAIN_MENU
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ **الحد الزمني غير صحيح!**\n\n✅ أدخل رقم صحيح فقط (مثال: 10)",
+            parse_mode='Markdown'
+        )
+        return AWAITING_TIME_LIMIT
+
+
+async def handle_edit_daily_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب إدخال حد يومي جديد"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "🔁 **تعديل الحد اليومي**\n\n"
+        "📝 أدخل الحد اليومي الجديد للمستخدمين غير المشتركين (عدد التحميلات)\n\n"
+        "💡 مثال: 5 (يعني 5 تحميلات يومياً)\n"
+        "⚠️ أدخل رقم صحيح فقط\n\n"
+        "اكتب الحد اليومي الجديد:"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_general_limits")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    context.user_data['awaiting_daily_limit'] = True
+
+    return AWAITING_DAILY_LIMIT
+
+
+async def receive_daily_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال الحد اليومي الجديد"""
+    if not context.user_data.get('awaiting_daily_limit'):
+        return MAIN_MENU
+
+    from database import set_daily_download_limit
+
+    limit_text = update.message.text.strip()
+
+    try:
+        limit = int(limit_text)
+
+        if limit < 0:
+            await update.message.reply_text(
+                "❌ **الحد اليومي غير صحيح!**\n\n✅ أدخل رقم موجب (مثال: 5)",
+                parse_mode='Markdown'
+            )
+            return AWAITING_DAILY_LIMIT
+
+        success = set_daily_download_limit(limit)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ **تم تحديث الحد اليومي بنجاح!**\n\n🔁 الحد الجديد: **{limit} تحميلات**",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ **فشل تحديث الحد اليومي!** يرجى المحاولة مرة أخرى.",
+                parse_mode='Markdown'
+            )
+
+        context.user_data.pop('awaiting_daily_limit', None)
+
+        keyboard = [[InlineKeyboardButton("↩️ العودة للوحة القيود", callback_data="admin_general_limits")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            "اختر الإجراء التالي:",
+            reply_markup=reply_markup
+        )
+
+        return MAIN_MENU
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ **الحد اليومي غير صحيح!**\n\n✅ أدخل رقم صحيح فقط (مثال: 5)",
+            parse_mode='Markdown'
+        )
+        return AWAITING_DAILY_LIMIT
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Broadcast System Enhancement - Individual User Messaging
 # ═══════════════════════════════════════════════════════════════
 
@@ -2306,6 +2513,10 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_error_reports_panel, pattern='^admin_error_reports$'),
             CallbackQueryHandler(handle_resolve_report, pattern='^resolve_report:'),
             CallbackQueryHandler(handle_confirm_resolve, pattern='^confirm_resolve:'),
+            # General Limits Control
+            CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
+            CallbackQueryHandler(handle_edit_time_limit, pattern='^edit_time_limit$'),
+            CallbackQueryHandler(handle_edit_daily_limit, pattern='^edit_daily_limit$'),
             # Broadcast System Enhanced
             CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
             CallbackQueryHandler(broadcast_all_start, pattern='^broadcast_all$'),
@@ -2337,6 +2548,16 @@ admin_conv_handler = ConversationHandler(
         AWAITING_AUDIO_LIMIT: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_audio_limit),
             CallbackQueryHandler(show_audio_settings_panel, pattern='^admin_audio_settings$'),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_TIME_LIMIT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_time_limit),
+            CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_DAILY_LIMIT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_daily_limit),
+            CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
         AWAITING_USER_ID_BROADCAST: [

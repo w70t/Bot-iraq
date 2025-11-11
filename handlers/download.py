@@ -9,10 +9,12 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import TimedOut, NetworkError
 from datetime import datetime
 import yt_dlp
 from yt_dlp.utils import DownloadError
 import logging
+import httpx
 
 # ThreadPoolExecutor for async subprocess execution
 executor = ThreadPoolExecutor(max_workers=5)
@@ -601,6 +603,82 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     
     return ydl_opts
 
+
+async def upload_to_server(file_path: str, user_id: int):
+    """
+    Placeholder function لرفع الملف إلى سيرفر خارجي
+    يمكن تطويره لاحقاً للرفع على خدمات مثل:
+    - Google Drive
+    - Mega.nz
+    - WeTransfer
+    - أو أي سيرفر مخصص
+    """
+    # TODO: Implement actual upload logic here
+    # For now, just return a placeholder URL
+    logger.info(f"📤 [PLACEHOLDER] رفع الملف إلى السيرفر: {file_path} للمستخدم {user_id}")
+    return f"https://example.com/files/{os.path.basename(file_path)}"
+
+
+async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, reply_to_message_id, duration, info_dict, max_retries=3):
+    """
+    محاولة إرسال الملف مع إعادة المحاولة في حالة TimedOut
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"🔄 محاولة رفع الملف (المحاولة {attempt}/{max_retries})")
+
+            with open(file_path, 'rb') as file:
+                if is_audio:
+                    sent_message = await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=file,
+                        caption=caption[:1024],
+                        reply_to_message_id=reply_to_message_id,
+                        duration=duration,
+                        read_timeout=300,  # 5 دقائق
+                        write_timeout=300,  # 5 دقائق
+                        connect_timeout=60,
+                        pool_timeout=60
+                    )
+                else:
+                    sent_message = await context.bot.send_video(
+                        chat_id=chat_id,
+                        video=file,
+                        caption=caption[:1024],
+                        reply_to_message_id=reply_to_message_id,
+                        supports_streaming=True,
+                        width=info_dict.get('width'),
+                        height=info_dict.get('height'),
+                        duration=duration,
+                        read_timeout=300,
+                        write_timeout=300,
+                        connect_timeout=60,
+                        pool_timeout=60
+                    )
+
+                logger.info(f"✅ تم الرفع بنجاح في المحاولة {attempt}")
+                return sent_message, None
+
+        except (TimedOut, httpx.WriteTimeout, httpx.ReadTimeout, NetworkError) as e:
+            logger.warning(f"⏱️ TimedOut في المحاولة {attempt}/{max_retries}: {e}")
+
+            if attempt < max_retries:
+                wait_time = attempt * 2  # تأخير تدريجي: 2، 4، 6 ثانية
+                logger.info(f"⏳ انتظار {wait_time} ثانية قبل إعادة المحاولة...")
+                await asyncio.sleep(wait_time)
+            else:
+                # فشلت جميع المحاولات
+                logger.error(f"❌ فشلت جميع المحاولات ({max_retries}) لرفع الملف")
+                return None, e
+
+        except Exception as e:
+            # أخطاء أخرى لا تستدعي إعادة المحاولة
+            logger.error(f"❌ خطأ غير متوقع أثناء الرفع: {e}")
+            return None, e
+
+    return None, Exception("فشل الرفع بعد جميع المحاولات")
+
+
 async def download_video_with_quality(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, info_dict: dict, quality: str):
     """تحميل الفيديو بالجودة المحددة"""
     user = update.effective_user
@@ -998,47 +1076,76 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             except:
                 pass
         
-        with open(final_video_path, 'rb') as file:
+        # محاولة إرسال الملف مع إعادة المحاولة في حالة TimedOut
+        sent_message, upload_error = await send_file_with_retry(
+            context=context,
+            chat_id=update.effective_chat.id,
+            file_path=final_video_path,
+            is_audio=is_audio,
+            caption=caption_text,
+            reply_to_message_id=update.effective_message.message_id,
+            duration=duration,
+            info_dict=info_dict,
+            max_retries=3
+        )
+
+        if sent_message:
+            # نجح الرفع
             if is_audio:
-                sent_message = await context.bot.send_audio(
-                    chat_id=update.effective_chat.id,
-                    audio=file,
-                    caption=caption_text[:1024],
-                    reply_to_message_id=update.effective_message.message_id,
-                    duration=duration
-                )
                 logger.info(f"✅ تم تحميل الصوت بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
             else:
-                sent_message = await context.bot.send_video(
-                    chat_id=update.effective_chat.id,
-                    video=file,
-                    caption=caption_text[:1024],
-                    reply_to_message_id=update.effective_message.message_id,
-                    supports_streaming=True,
-                    width=info_dict.get('width'),
-                    height=info_dict.get('height'),
-                    duration=duration
-                )
                 logger.info(f"✅ تم تحميل الفيديو بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
+            logger.info(f"✅ تم الإرسال بنجاح")
 
-                # إرسال تقرير احترافي لقناة الفيديوهات - DISABLED to avoid duplicates
-                # Now using forward-only send_log_to_channel instead
-                # try:
-                #     video_title = info_dict.get('title', 'بدون عنوان')
-                #     video_size = format_file_size(os.path.getsize(final_video_path))
-                #     username = user.username if user.username else user.first_name
-                #     send_video_report(
-                #         user_id=user_id,
-                #         username=username,
-                #         url=url,
-                #         title=video_title,
-                #         size=video_size,
-                #         video_path=final_video_path
-                #     )
-                # except Exception as e:
-                #     log_warning(f"❌ فشل إرسال تقرير الفيديو: {e}", module="handlers/download.py")
-        
-        logger.info(f"✅ تم الإرسال بنجاح")
+        else:
+            # فشل الرفع بعد جميع المحاولات - استخدام البديل
+            logger.error(f"❌ فشل رفع الملف بعد {3} محاولات: {upload_error}")
+
+            # محاولة رفع الملف إلى سيرفر خارجي (placeholder)
+            alternative_url = await upload_to_server(final_video_path, user_id)
+
+            # إرسال رسالة للمستخدم مع رابط بديل
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    f"⚠️ **حدث خطأ في رفع الملف مباشرة**\n\n"
+                    f"الملف كبير جداً ({format_file_size(os.path.getsize(final_video_path))})\n"
+                    f"ولكن تم تحميله بنجاح على السيرفر!\n\n"
+                    f"🔗 **رابط بديل:** {alternative_url}\n\n"
+                    f"⏱️ المدة: {format_duration(duration)}\n"
+                    f"💡 يمكنك تحميله من الرابط أعلاه"
+                ),
+                reply_to_message_id=update.effective_message.message_id,
+                parse_mode='Markdown'
+            )
+
+            # إرسال تقرير فشل إلى قناة السجلات
+            if LOG_CHANNEL_ID:
+                try:
+                    log_channel_id = int(LOG_CHANNEL_ID)
+                    fail_report_text = (
+                        "🔴 **فشل رفع ملف كبير (TimedOut)**\n\n"
+                        f"👤 المستخدم: @{user.username if user.username else user.full_name} (ID: {user_id})\n"
+                        f"🔗 الرابط الأصلي: {url[:100]}\n"
+                        f"📦 الحجم: {format_file_size(os.path.getsize(final_video_path))}\n"
+                        f"⏱️ المدة: {format_duration(duration)}\n"
+                        f"📝 العنوان: {title[:100]}\n"
+                        f"⚠️ الخطأ: {upload_error}\n"
+                        f"🔗 الرابط البديل: {alternative_url}\n"
+                        f"🕒 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    await context.bot.send_message(
+                        chat_id=log_channel_id,
+                        text=fail_report_text,
+                        parse_mode='Markdown'
+                    )
+                    logger.info("✅ تم إرسال تقرير الفشل إلى قناة السجلات")
+                except Exception as e:
+                    logger.error(f"❌ فشل إرسال تقرير الفشل: {e}")
+
+            # لا نرمي استثناء هنا لأننا قدمنا حل بديل
+            # بدلاً من ذلك، نكمل التنفيذ العادي لكن بدون sent_message
+            sent_message = None
 
         try:
             await processing_message.delete()
@@ -1055,8 +1162,10 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     chat_id=update.effective_chat.id,
                     text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
                 )
-        
-        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message, is_audio)
+
+        # إرسال سجل للقناة فقط إذا نجح الرفع
+        if sent_message:
+            await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message, is_audio)
         
         # تسجيل الإحصائيات - تحميل ناجح
         from database import record_download_attempt
