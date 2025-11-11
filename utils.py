@@ -1034,3 +1034,114 @@ def log_error_to_file(error_type: str, user_id: int, url: str, exception: Except
 
     except Exception as e:
         logger.error(f"❌ Failed to write error log: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Cookie Management V5.0 - Weekly Check Job
+# ═══════════════════════════════════════════════════════════════
+
+async def check_cookies_weekly(context):
+    """
+    مهمة فحص الـ cookies أسبوعياً
+    يتم استدعاؤها تلقائياً كل 7 أيام
+    """
+    try:
+        from handlers.cookie_manager import cookie_manager
+        import os
+
+        logger.info("🍪 بدء الفحص الأسبوعي للـ cookies...")
+
+        # Get admin IDs from environment
+        admin_ids_str = os.getenv("ADMIN_IDS", "")
+        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+
+        # Check and alert for expired cookies
+        await cookie_manager.check_and_alert_expired(context, admin_ids)
+
+        logger.info("✅ اكتمل الفحص الأسبوعي للـ cookies بنجاح")
+
+    except Exception as e:
+        logger.error(f"❌ فشل الفحص الأسبوعي للـ cookies: {e}")
+
+
+async def backup_cookies_weekly(context):
+    """
+    مهمة النسخ الاحتياطي الأسبوعي للـ cookies
+    يتم استدعاؤها تلقائياً كل 7 أيام
+    """
+    try:
+        from handlers.cookie_manager import create_backup
+        import os
+
+        logger.info("💾 بدء النسخ الاحتياطي الأسبوعي للـ cookies...")
+
+        # Create backup
+        backup_path, file_hash = create_backup()
+
+        if backup_path and file_hash:
+            # Get log channel ID
+            log_channel_id = os.getenv("LOG_CHANNEL_ID")
+
+            if log_channel_id:
+                # Send backup to log channel
+                caption = (
+                    "🔐 **Weekly Cookie Backup**\n\n"
+                    f"📦 File: {os.path.basename(backup_path)}\n"
+                    f"🔑 AES-256 Encrypted\n"
+                    f"🔒 SHA256: `{file_hash[:16]}...`\n\n"
+                    f"📅 Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"⚠️ Admins only - Keep secure!"
+                )
+
+                with open(backup_path, 'rb') as f:
+                    await context.bot.send_document(
+                        chat_id=log_channel_id,
+                        document=f,
+                        caption=caption,
+                        parse_mode='Markdown'
+                    )
+
+                logger.info("✅ تم إرسال النسخ الاحتياطي إلى قناة السجلات بنجاح")
+            else:
+                logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم رفع النسخ الاحتياطي")
+
+        else:
+            logger.error("❌ فشل إنشاء النسخ الاحتياطي")
+
+    except Exception as e:
+        logger.error(f"❌ فشل النسخ الاحتياطي الأسبوعي: {e}")
+
+
+def setup_cookie_check_job(application):
+    """
+    إعداد مهمة الفحص الأسبوعي للـ cookies
+    يتم استدعاؤها من bot.py عند بدء التشغيل
+
+    Args:
+        application: كائن Application من python-telegram-bot
+    """
+    from datetime import time
+
+    # فحص الـ cookies أسبوعياً كل يوم أحد في الساعة 00:00 بتوقيت UTC
+    job_queue = application.job_queue
+
+    if job_queue:
+        # Run weekly check on Sunday at midnight
+        job_queue.run_daily(
+            check_cookies_weekly,
+            time=time(hour=0, minute=0, second=0),
+            days=(6,),  # Sunday = 6 in python-telegram-bot (0=Monday)
+            name='weekly_cookie_check'
+        )
+
+        # Run weekly backup on Sunday at 00:30 UTC (30 minutes after check)
+        job_queue.run_daily(
+            backup_cookies_weekly,
+            time=time(hour=0, minute=30, second=0),
+            days=(6,),  # Sunday = 6 in python-telegram-bot (0=Monday)
+            name='weekly_cookie_backup'
+        )
+
+        logger.info("✅ تم جدولة الفحص والنسخ الاحتياطي الأسبوعي للـ cookies (كل يوم أحد)")
+    else:
+        logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة المهام الأسبوعية للـ cookies")

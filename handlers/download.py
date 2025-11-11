@@ -496,40 +496,65 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         'compat_opts': ['no-youtube-unavailable-videos'],
     }
 
-    # دعم cookies من المتصفح أو ملف cookies.txt
+    # دعم cookies - Auto-Detection V5.0 Ultra Secure
     cookies_loaded = False
 
     # محاولة تحميل cookies من Chrome أولاً (للمنصات الاجتماعية)
     if is_tiktok or is_instagram or is_facebook:
+        # 1️⃣ Try encrypted cookies first (V5.0 Auto Cookie Management)
         try:
-            ydl_opts['cookiesfrombrowser'] = ('chrome',)
-            cookies_loaded = True
-            logger.info("✅ Using cookies from Chrome browser")
-        except Exception as e:
-            logger.debug(f"Could not load Chrome cookies: {e}")
-            # محاولة Firefox
-            try:
-                ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                cookies_loaded = True
-                logger.info("✅ Using cookies from Firefox browser")
-            except Exception as e2:
-                logger.debug(f"Could not load Firefox cookies: {e2}")
+            from handlers.cookie_manager import cookie_manager
 
-                # محاولة تحميل ملفات cookies.txt خاصة بكل منصة
-                platform_cookies = None
-                if is_tiktok and os.path.exists('cookies/tiktok.txt'):
-                    platform_cookies = 'cookies/tiktok.txt'
-                elif is_facebook and os.path.exists('cookies/facebook.txt'):
-                    platform_cookies = 'cookies/facebook.txt'
-                elif is_instagram and os.path.exists('cookies/instagram.txt'):
-                    platform_cookies = 'cookies/instagram.txt'
+            # Detect platform
+            platform = None
+            if is_tiktok:
+                platform = 'tiktok'
+            elif is_facebook:
+                platform = 'facebook'
+            elif is_instagram:
+                platform = 'instagram'
 
-                if platform_cookies:
-                    ydl_opts['cookiefile'] = platform_cookies
+            if platform:
+                # Try to decrypt and use encrypted cookies
+                cookie_path = cookie_manager.decrypt_cookie_file(platform)
+                if cookie_path:
+                    ydl_opts['cookiefile'] = cookie_path
                     cookies_loaded = True
-                    logger.info(f"✅ Using platform-specific cookies from {platform_cookies}")
+                    logger.info(f"✅ Using encrypted cookies for {platform} (V5.0)")
+        except Exception as e:
+            logger.debug(f"Could not load encrypted cookies: {e}")
 
-    # إذا فشل تحميل cookies من المتصفح والملفات الخاصة، استخدم ملف cookies.txt العام
+        # 2️⃣ Try browser cookies if encrypted cookies not available
+        if not cookies_loaded:
+            try:
+                ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                cookies_loaded = True
+                logger.info("✅ Using cookies from Chrome browser")
+            except Exception as e:
+                logger.debug(f"Could not load Chrome cookies: {e}")
+                # محاولة Firefox
+                try:
+                    ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                    cookies_loaded = True
+                    logger.info("✅ Using cookies from Firefox browser")
+                except Exception as e2:
+                    logger.debug(f"Could not load Firefox cookies: {e2}")
+
+                    # 3️⃣ محاولة تحميل ملفات cookies.txt خاصة بكل منصة (fallback)
+                    platform_cookies = None
+                    if is_tiktok and os.path.exists('cookies/tiktok.txt'):
+                        platform_cookies = 'cookies/tiktok.txt'
+                    elif is_facebook and os.path.exists('cookies/facebook.txt'):
+                        platform_cookies = 'cookies/facebook.txt'
+                    elif is_instagram and os.path.exists('cookies/instagram.txt'):
+                        platform_cookies = 'cookies/instagram.txt'
+
+                    if platform_cookies:
+                        ydl_opts['cookiefile'] = platform_cookies
+                        cookies_loaded = True
+                        logger.info(f"✅ Using platform-specific cookies from {platform_cookies}")
+
+    # 4️⃣ إذا فشل تحميل cookies من المتصفح والملفات الخاصة، استخدم ملف cookies.txt العام
     if not cookies_loaded and os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
         logger.info("✅ Using cookies.txt for authentication")

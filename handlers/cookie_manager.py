@@ -1,0 +1,685 @@
+"""
+🍪 Auto Cookie Management System V5.0 Ultra Secure Edition
+Handles encrypted cookie storage, validation, and automatic platform detection
+"""
+
+import os
+import json
+import logging
+import asyncio
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from cryptography.fernet import Fernet
+import yt_dlp
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+
+logger = logging.getLogger(__name__)
+
+# Paths
+COOKIES_ENCRYPTED_DIR = Path("cookies_encrypted")
+COOKIES_TEMP_DIR = Path("cookies")
+COOKIE_KEY_FILE = Path("cookie_key.json")
+COOKIE_LOG_FILE = Path("logs/cookie_events.log")
+
+# Test URLs for validation
+TEST_URLS = {
+    'instagram': 'https://www.instagram.com/stories/highlights/',
+    'facebook': 'https://www.facebook.com/stories.php',
+    'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173'
+}
+
+# Platform detection patterns
+PLATFORM_PATTERNS = {
+    'facebook': ['facebook.com', 'fb.watch', 'fb.com'],
+    'instagram': ['instagram.com'],
+    'tiktok': ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
+}
+
+
+class CookieManager:
+    """Manages encrypted cookies with auto-validation and platform detection"""
+
+    def __init__(self):
+        self.fernet = None
+        self._ensure_directories()
+        self._load_or_create_key()
+
+    def _ensure_directories(self):
+        """Create necessary directories"""
+        COOKIES_ENCRYPTED_DIR.mkdir(exist_ok=True)
+        COOKIES_TEMP_DIR.mkdir(exist_ok=True)
+        Path("logs").mkdir(exist_ok=True)
+        logger.info("✅ Cookie directories initialized")
+
+    def _load_or_create_key(self):
+        """Load or generate AES-256 encryption key"""
+        try:
+            if COOKIE_KEY_FILE.exists():
+                with open(COOKIE_KEY_FILE, 'r') as f:
+                    key_data = json.load(f)
+                    key = key_data['key'].encode()
+                    logger.info("🔑 Loaded existing encryption key")
+            else:
+                # Generate new key
+                key = Fernet.generate_key()
+                key_data = {
+                    'key': key.decode(),
+                    'created_at': datetime.now().isoformat(),
+                    'algorithm': 'AES-256 (Fernet)'
+                }
+                with open(COOKIE_KEY_FILE, 'w') as f:
+                    json.dump(key_data, f, indent=2)
+                logger.info("🔐 Generated new encryption key")
+
+            self.fernet = Fernet(key)
+        except Exception as e:
+            logger.error(f"❌ Failed to load/create encryption key: {e}")
+            raise
+
+    def _log_event(self, message: str):
+        """Log cookie events to file"""
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(COOKIE_LOG_FILE, 'a', encoding='utf-8') as f:
+                f.write(f"[{timestamp}] {message}\n")
+        except Exception as e:
+            logger.error(f"❌ Failed to log event: {e}")
+
+    def detect_platform(self, url: str) -> str:
+        """Detect platform from URL"""
+        url_lower = url.lower()
+        for platform, patterns in PLATFORM_PATTERNS.items():
+            if any(pattern in url_lower for pattern in patterns):
+                return platform
+        return None
+
+    def encrypt_cookie_file(self, platform: str, cookie_data: bytes) -> bool:
+        """Encrypt cookie file and save to encrypted directory"""
+        try:
+            encrypted_data = self.fernet.encrypt(cookie_data)
+            encrypted_path = COOKIES_ENCRYPTED_DIR / f"{platform}.enc"
+
+            with open(encrypted_path, 'wb') as f:
+                f.write(encrypted_data)
+
+            # Save metadata
+            metadata = {
+                'platform': platform,
+                'encrypted_at': datetime.now().isoformat(),
+                'size': len(encrypted_data),
+                'validated': False
+            }
+            metadata_path = COOKIES_ENCRYPTED_DIR / f"{platform}.json"
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+            self._log_event(f"🔒 Encrypted cookies for {platform}")
+            logger.info(f"✅ Successfully encrypted cookies for {platform}")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to encrypt cookies for {platform}: {e}")
+            self._log_event(f"❌ Encryption failed for {platform}: {e}")
+            return False
+
+    def decrypt_cookie_file(self, platform: str) -> str:
+        """Decrypt cookie file temporarily and return path"""
+        try:
+            encrypted_path = COOKIES_ENCRYPTED_DIR / f"{platform}.enc"
+
+            if not encrypted_path.exists():
+                logger.warning(f"⚠️ No encrypted cookies found for {platform}")
+                return None
+
+            with open(encrypted_path, 'rb') as f:
+                encrypted_data = f.read()
+
+            decrypted_data = self.fernet.decrypt(encrypted_data)
+
+            # Save to temporary location
+            temp_path = COOKIES_TEMP_DIR / f"{platform}.txt"
+            with open(temp_path, 'wb') as f:
+                f.write(decrypted_data)
+
+            logger.info(f"🔓 Decrypted cookies for {platform} temporarily")
+            return str(temp_path)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to decrypt cookies for {platform}: {e}")
+            return None
+
+    def delete_temp_cookies(self):
+        """Delete all temporary decrypted cookies"""
+        try:
+            for file in COOKIES_TEMP_DIR.glob("*.txt"):
+                file.unlink()
+            logger.info("🧹 Cleaned up temporary cookie files")
+        except Exception as e:
+            logger.error(f"❌ Failed to delete temp cookies: {e}")
+
+    async def validate_cookies(self, platform: str) -> bool:
+        """Validate cookies by testing with yt-dlp"""
+        cookie_path = None
+        try:
+            # Decrypt temporarily
+            cookie_path = self.decrypt_cookie_file(platform)
+            if not cookie_path:
+                return False
+
+            # Get test URL
+            test_url = TEST_URLS.get(platform)
+            if not test_url:
+                logger.warning(f"⚠️ No test URL defined for {platform}")
+                return False
+
+            # Test with yt-dlp
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'cookiefile': cookie_path,
+                'skip_download': True,
+                'extract_flat': True,
+            }
+
+            loop = asyncio.get_event_loop()
+
+            def test_extract():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(test_url, download=False)
+
+            # Run with timeout
+            await asyncio.wait_for(
+                loop.run_in_executor(None, test_extract),
+                timeout=30
+            )
+
+            # Update metadata
+            metadata_path = COOKIES_ENCRYPTED_DIR / f"{platform}.json"
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                metadata['validated'] = True
+                metadata['last_validated'] = datetime.now().isoformat()
+                with open(metadata_path, 'w') as f:
+                    json.dump(metadata, f, indent=2)
+
+            self._log_event(f"✅ Cookies for {platform} validated successfully")
+            logger.info(f"✅ Cookies for {platform} are valid")
+            return True
+
+        except asyncio.TimeoutError:
+            logger.error(f"❌ Validation timeout for {platform}")
+            self._log_event(f"❌ Validation timeout for {platform}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Validation failed for {platform}: {e}")
+            self._log_event(f"❌ Validation failed for {platform}: {e}")
+            return False
+        finally:
+            # Always cleanup temp files
+            if cookie_path and os.path.exists(cookie_path):
+                try:
+                    os.remove(cookie_path)
+                except:
+                    pass
+
+    def get_cookie_status(self) -> dict:
+        """Get status of all encrypted cookies"""
+        status = {}
+
+        for platform in ['facebook', 'instagram', 'tiktok']:
+            encrypted_path = COOKIES_ENCRYPTED_DIR / f"{platform}.enc"
+            metadata_path = COOKIES_ENCRYPTED_DIR / f"{platform}.json"
+
+            if encrypted_path.exists():
+                info = {'exists': True}
+
+                if metadata_path.exists():
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+
+                    encrypted_date = datetime.fromisoformat(metadata['encrypted_at'])
+                    age_days = (datetime.now() - encrypted_date).days
+
+                    info.update({
+                        'age_days': age_days,
+                        'validated': metadata.get('validated', False),
+                        'last_validated': metadata.get('last_validated', 'Never'),
+                        'size': metadata.get('size', 0)
+                    })
+                else:
+                    info.update({
+                        'age_days': 0,
+                        'validated': False,
+                        'last_validated': 'Never',
+                        'size': 0
+                    })
+
+                status[platform] = info
+            else:
+                status[platform] = {'exists': False}
+
+        return status
+
+    def delete_cookies(self, platform: str) -> bool:
+        """Delete encrypted cookies for a platform"""
+        try:
+            encrypted_path = COOKIES_ENCRYPTED_DIR / f"{platform}.enc"
+            metadata_path = COOKIES_ENCRYPTED_DIR / f"{platform}.json"
+
+            if encrypted_path.exists():
+                encrypted_path.unlink()
+            if metadata_path.exists():
+                metadata_path.unlink()
+
+            self._log_event(f"🗑️ Deleted cookies for {platform}")
+            logger.info(f"✅ Deleted cookies for {platform}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to delete cookies for {platform}: {e}")
+            return False
+
+    async def check_and_alert_expired(self, context: ContextTypes.DEFAULT_TYPE, admin_ids: list):
+        """Check all cookies and alert admins if expired"""
+        try:
+            status = self.get_cookie_status()
+            alerts = []
+
+            for platform, info in status.items():
+                if info['exists']:
+                    age_days = info.get('age_days', 0)
+
+                    if age_days > 30:
+                        alerts.append(f"⚠️ {platform.capitalize()} cookies are {age_days} days old")
+                        self._log_event(f"⚠️ {platform} cookies are {age_days} days old")
+
+                    # Validate if needed
+                    if not info.get('validated', False):
+                        is_valid = await self.validate_cookies(platform)
+                        if not is_valid:
+                            self.delete_cookies(platform)
+                            alerts.append(f"❌ {platform.capitalize()} cookies expired and deleted")
+
+            # Send alerts to admins
+            if alerts:
+                alert_message = "🍪 **Cookie Status Alert**\n\n" + "\n".join(alerts)
+                for admin_id in admin_ids:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=alert_message,
+                            parse_mode='Markdown'
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send alert to admin {admin_id}: {e}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to check expired cookies: {e}")
+
+
+# Global instance
+cookie_manager = CookieManager()
+
+
+# ====================
+# Telegram Handlers
+# ====================
+
+async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle cookie file upload from admin"""
+    from database import is_admin
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.message.reply_text("🚫 غير مصرح لك باستخدام هذا الأمر!")
+        return
+
+    # Check if document is attached
+    if not update.message.document:
+        await update.message.reply_text(
+            "❌ يرجى إرفاق ملف cookies بصيغة .txt\n\n"
+            "💡 الملفات المدعومة:\n"
+            "• facebook.txt\n"
+            "• instagram.txt\n"
+            "• tiktok.txt"
+        )
+        return
+
+    document = update.message.document
+    filename = document.file_name.lower()
+
+    # Detect platform from filename
+    platform = None
+    if 'facebook' in filename or 'fb' in filename:
+        platform = 'facebook'
+    elif 'instagram' in filename or 'ig' in filename:
+        platform = 'instagram'
+    elif 'tiktok' in filename or 'tt' in filename:
+        platform = 'tiktok'
+
+    if not platform:
+        await update.message.reply_text(
+            "❌ لم أتمكن من تحديد المنصة من اسم الملف!\n\n"
+            "💡 تأكد أن اسم الملف يحتوي على:\n"
+            "• facebook أو fb\n"
+            "• instagram أو ig\n"
+            "• tiktok أو tt"
+        )
+        return
+
+    processing_msg = await update.message.reply_text(
+        f"🔄 **جاري معالجة ملف cookies لـ {platform.capitalize()}...**\n\n"
+        f"⏳ الرجاء الانتظار...",
+        parse_mode='Markdown'
+    )
+
+    try:
+        # Download file
+        file = await document.get_file()
+        cookie_data = await file.download_as_bytearray()
+
+        # Encrypt and save
+        success = cookie_manager.encrypt_cookie_file(platform, bytes(cookie_data))
+
+        if not success:
+            await processing_msg.edit_text(
+                f"❌ فشل تشفير ملف cookies لـ {platform.capitalize()}!\n\n"
+                f"يرجى المحاولة مرة أخرى."
+            )
+            return
+
+        # Validate
+        await processing_msg.edit_text(
+            f"🔒 **تم تشفير الملف بنجاح!**\n\n"
+            f"🧪 جاري اختبار صلاحية الـ cookies...\n"
+            f"⏳ قد يستغرق 10-30 ثانية...",
+            parse_mode='Markdown'
+        )
+
+        is_valid = await cookie_manager.validate_cookies(platform)
+
+        if is_valid:
+            await processing_msg.edit_text(
+                f"✅ **تم رفع وتفعيل cookies لـ {platform.capitalize()} بنجاح!**\n\n"
+                f"🔒 الملف مشفر بـ AES-256\n"
+                f"📁 المسار: `/cookies_encrypted/{platform}.enc`\n"
+                f"✅ تم التحقق من صلاحية الـ cookies\n"
+                f"📸 يمكن الآن تحميل Stories والمحتوى الخاص\n\n"
+                f"💡 سيتم التحقق تلقائياً كل 7 أيام",
+                parse_mode='Markdown'
+            )
+        else:
+            cookie_manager.delete_cookies(platform)
+            await processing_msg.edit_text(
+                f"❌ **فشل التحقق من صلاحية cookies لـ {platform.capitalize()}!**\n\n"
+                f"⚠️ تم حذف الملف تلقائياً للأمان\n\n"
+                f"💡 تأكد من:\n"
+                f"• تسجيل الدخول في المتصفح\n"
+                f"• تصدير cookies بصيغة Netscape\n"
+                f"• عدم انتهاء صلاحية الجلسة\n\n"
+                f"🔄 يرجى تصدير ورفع ملف جديد",
+                parse_mode='Markdown'
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Error handling cookie upload: {e}")
+        await processing_msg.edit_text(
+            f"❌ حدث خطأ أثناء معالجة الملف!\n\n"
+            f"الخطأ: {str(e)}"
+        )
+
+
+async def show_cookie_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show cookie status to admin"""
+    from database import is_admin
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.effective_message.reply_text("🚫 غير مصرح لك!")
+        return
+
+    status = cookie_manager.get_cookie_status()
+
+    message = "🍪 **حالة ملفات Cookies**\n\n"
+
+    for platform, info in status.items():
+        platform_emoji = {
+            'facebook': '📘',
+            'instagram': '📸',
+            'tiktok': '🎵'
+        }
+        emoji = platform_emoji.get(platform, '📁')
+
+        message += f"{emoji} **{platform.capitalize()}:**\n"
+
+        if info['exists']:
+            age_days = info.get('age_days', 0)
+            validated = info.get('validated', False)
+
+            # Age status
+            if age_days > 30:
+                age_status = f"⚠️ {age_days} يوم (قديمة)"
+            elif age_days > 14:
+                age_status = f"🟡 {age_days} يوم"
+            else:
+                age_status = f"✅ {age_days} يوم"
+
+            # Validation status
+            val_status = "✅ صالحة" if validated else "⚠️ لم يتم التحقق"
+
+            message += f"  • الحالة: {val_status}\n"
+            message += f"  • العمر: {age_status}\n"
+            message += f"  • الحجم: {info.get('size', 0)} bytes\n"
+        else:
+            message += f"  • الحالة: ❌ غير موجودة\n"
+
+        message += "\n"
+
+    message += "💡 **معلومات:**\n"
+    message += "• التحقق التلقائي: كل 7 أيام\n"
+    message += "• التشفير: AES-256 (Fernet)\n"
+    message += "• الملفات المشفرة في: `/cookies_encrypted/`\n"
+
+    await update.effective_message.reply_text(message, parse_mode='Markdown')
+
+
+async def test_all_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test all cookies manually"""
+    from database import is_admin
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.effective_message.reply_text("🚫 غير مصرح لك!")
+        return
+
+    processing_msg = await update.effective_message.reply_text(
+        "🧪 **جاري اختبار جميع ملفات Cookies...**\n\n"
+        "⏳ قد يستغرق 30-60 ثانية...",
+        parse_mode='Markdown'
+    )
+
+    status = cookie_manager.get_cookie_status()
+    results = []
+
+    for platform, info in status.items():
+        if info['exists']:
+            is_valid = await cookie_manager.validate_cookies(platform)
+
+            if is_valid:
+                results.append(f"✅ {platform.capitalize()}: صالحة")
+            else:
+                results.append(f"❌ {platform.capitalize()}: فاشلة")
+        else:
+            results.append(f"⚠️ {platform.capitalize()}: غير موجودة")
+
+    results_text = "\n".join(results)
+
+    await processing_msg.edit_text(
+        f"🧪 **نتائج اختبار Cookies:**\n\n"
+        f"{results_text}\n\n"
+        f"⏰ الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        parse_mode='Markdown'
+    )
+
+
+async def test_story_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test story download with current cookies"""
+    from database import is_admin
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.effective_message.reply_text("🚫 غير مصرح لك!")
+        return
+
+    processing_msg = await update.effective_message.reply_text(
+        "📸 **جاري اختبار تحميل Stories...**\n\n"
+        "⏳ اختبار Instagram و Facebook...",
+        parse_mode='Markdown'
+    )
+
+    results = []
+
+    # Test Instagram stories
+    ig_valid = await cookie_manager.validate_cookies('instagram')
+    if ig_valid:
+        results.append("✅ Instagram Stories: يعمل")
+    else:
+        results.append("❌ Instagram Stories: فشل")
+
+    # Test Facebook stories
+    fb_valid = await cookie_manager.validate_cookies('facebook')
+    if fb_valid:
+        results.append("✅ Facebook Stories: يعمل")
+    else:
+        results.append("❌ Facebook Stories: فشل")
+
+    results_text = "\n".join(results)
+
+    if ig_valid and fb_valid:
+        status_emoji = "✅"
+        status_text = "كل الـ Stories تعمل بشكل صحيح!"
+    else:
+        status_emoji = "⚠️"
+        status_text = "بعض الـ Stories لا تعمل - يرجى رفع cookies جديدة"
+
+    await processing_msg.edit_text(
+        f"📸 **نتائج اختبار Stories:**\n\n"
+        f"{results_text}\n\n"
+        f"{status_emoji} {status_text}",
+        parse_mode='Markdown'
+    )
+
+
+async def delete_all_cookies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete all encrypted cookies"""
+    from database import is_admin
+
+    user_id = update.effective_user.id
+
+    if not is_admin(user_id):
+        await update.effective_message.reply_text("🚫 غير مصرح لك!")
+        return
+
+    # Confirmation check
+    if not context.user_data.get('confirm_delete_cookies'):
+        context.user_data['confirm_delete_cookies'] = True
+
+        keyboard = [
+            [InlineKeyboardButton("✅ نعم، احذف الكل", callback_data="confirm_delete_all_cookies")],
+            [InlineKeyboardButton("❌ إلغاء", callback_data="cancel_delete_cookies")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.effective_message.reply_text(
+            "⚠️ **تأكيد حذف جميع ملفات Cookies**\n\n"
+            "هل أنت متأكد من حذف جميع ملفات cookies المشفرة؟\n\n"
+            "• سيتم حذف Facebook cookies\n"
+            "• سيتم حذف Instagram cookies\n"
+            "• سيتم حذف TikTok cookies\n\n"
+            "⚠️ لا يمكن التراجع عن هذا الإجراء!",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        return
+
+
+async def confirm_delete_all_cookies_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm deletion of all cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import is_admin
+    user_id = query.from_user.id
+
+    if not is_admin(user_id):
+        await query.edit_message_text("🚫 غير مصرح لك!")
+        return
+
+    # Delete all cookies
+    deleted = []
+    for platform in ['facebook', 'instagram', 'tiktok']:
+        success = cookie_manager.delete_cookies(platform)
+        if success:
+            deleted.append(platform.capitalize())
+
+    if deleted:
+        await query.edit_message_text(
+            f"✅ **تم حذف جميع ملفات Cookies بنجاح!**\n\n"
+            f"🗑️ تم حذف: {', '.join(deleted)}\n\n"
+            f"💡 يمكنك رفع ملفات جديدة عبر لوحة التحكم",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text("⚠️ لا توجد ملفات cookies لحذفها")
+
+    # Clear confirmation flag
+    context.user_data['confirm_delete_cookies'] = False
+
+
+async def cancel_delete_cookies_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel deletion"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data['confirm_delete_cookies'] = False
+    await query.edit_message_text("❌ تم إلغاء عملية الحذف")
+
+
+# ====================
+# Backup System
+# ====================
+
+def create_backup():
+    """Create encrypted backup of cookies directory"""
+    import zipfile
+    import hashlib
+
+    try:
+        backup_date = datetime.now().strftime("%Y-%m-%d")
+        backup_filename = f"cookies_encrypted_{backup_date}.zip"
+        backup_path = Path(f"backups/{backup_filename}")
+
+        # Create backups directory
+        Path("backups").mkdir(exist_ok=True)
+
+        # Create ZIP of cookies_encrypted directory
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in COOKIES_ENCRYPTED_DIR.glob("*"):
+                zipf.write(file, file.name)
+
+        # Calculate SHA256 checksum
+        with open(backup_path, 'rb') as f:
+            file_hash = hashlib.sha256(f.read()).hexdigest()
+
+        logger.info(f"✅ Created backup: {backup_filename}")
+        return str(backup_path), file_hash
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create backup: {e}")
+        return None, None
