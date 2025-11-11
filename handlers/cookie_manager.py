@@ -37,6 +37,22 @@ PLATFORM_PATTERNS = {
     'tiktok': ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
 }
 
+# Platform Cookie Linking (V5.1)
+# Defines which platforms share the same cookie file
+PLATFORM_COOKIE_LINKS = {
+    'pinterest': 'instagram',      # Pinterest uses Instagram cookies
+    'reddit': 'facebook',           # Reddit uses Facebook cookies
+    'vimeo': 'general',             # Vimeo uses general cookies
+    'dailymotion': 'general',       # Dailymotion uses general cookies
+    'twitch': 'general',            # Twitch uses general cookies
+    'twitter': 'general',           # Twitter uses general cookies
+    # Direct platforms (use their own cookies)
+    'facebook': 'facebook',
+    'instagram': 'instagram',
+    'tiktok': 'tiktok',
+    'youtube': None                 # YouTube doesn't need cookies
+}
+
 
 class CookieManager:
     """Manages encrypted cookies with auto-validation and platform detection"""
@@ -269,6 +285,84 @@ class CookieManager:
                 status[platform] = {'exists': False}
 
         return status
+
+    def get_cookie_file_for_platform(self, platform: str) -> str:
+        """
+        Get the actual cookie file name for a platform (V5.1)
+        Supports platform linking (e.g., Pinterest uses Instagram cookies)
+
+        Returns the cookie file base name (e.g., 'instagram', 'facebook', 'general')
+        """
+        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower())
+        return cookie_file
+
+    def get_platform_cookie_status(self, platform: str) -> dict:
+        """
+        Get cookie status for any platform including linked platforms (V5.1)
+
+        Returns:
+            dict with keys:
+            - exists: bool
+            - cookie_file: str (which cookie file is used)
+            - linked: bool (whether this platform uses linked cookies)
+            - age_days: int
+            - validated: bool
+            - last_validated: str
+        """
+        cookie_file = self.get_cookie_file_for_platform(platform)
+
+        if cookie_file is None:
+            # Platform doesn't need cookies (e.g., YouTube)
+            return {
+                'exists': False,
+                'cookie_file': None,
+                'linked': False,
+                'needs_cookies': False
+            }
+
+        # Check if this is a linked platform
+        is_linked = (cookie_file != platform.lower())
+
+        # Get status of the actual cookie file
+        encrypted_path = COOKIES_ENCRYPTED_DIR / f"{cookie_file}.enc"
+        metadata_path = COOKIES_ENCRYPTED_DIR / f"{cookie_file}.json"
+
+        if encrypted_path.exists():
+            info = {
+                'exists': True,
+                'cookie_file': cookie_file,
+                'linked': is_linked,
+                'needs_cookies': True
+            }
+
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+
+                encrypted_date = datetime.fromisoformat(metadata['encrypted_at'])
+                age_days = (datetime.now() - encrypted_date).days
+
+                info.update({
+                    'age_days': age_days,
+                    'validated': metadata.get('validated', False),
+                    'last_validated': metadata.get('last_validated', 'Never'),
+                    'encrypted_at': metadata['encrypted_at']
+                })
+            else:
+                info.update({
+                    'age_days': 0,
+                    'validated': False,
+                    'last_validated': 'Never'
+                })
+
+            return info
+        else:
+            return {
+                'exists': False,
+                'cookie_file': cookie_file,
+                'linked': is_linked,
+                'needs_cookies': True
+            }
 
     def delete_cookies(self, platform: str) -> bool:
         """Delete encrypted cookies for a platform"""
