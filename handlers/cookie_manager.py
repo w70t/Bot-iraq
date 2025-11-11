@@ -27,7 +27,11 @@ COOKIE_LOG_FILE = Path("logs/cookie_events.log")
 # Test URLs for validation
 TEST_URLS = {
     'instagram': 'https://www.instagram.com/stories/highlights/',
-    'facebook': 'https://www.facebook.com/stories.php',
+    'facebook': [
+        'https://www.facebook.com/me',
+        'https://m.facebook.com/me',
+        'https://www.facebook.com/settings',
+    ],
     'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173'
 }
 
@@ -325,8 +329,25 @@ class CookieManager:
         except Exception as e:
             logger.error(f"❌ Failed to delete temp cookies: {e}")
 
+    def _fb_has_essential_cookies(self, cookie_file_path: str) -> bool:
+        """Check if Facebook cookie file contains essential cookies (xs, c_user)"""
+        try:
+            import http.cookiejar
+            cookiejar = http.cookiejar.MozillaCookieJar()
+            cookiejar.load(cookie_file_path, ignore_discard=True, ignore_expires=True)
+
+            names = {c.name for c in cookiejar if "facebook" in c.domain}
+            required = {"xs", "c_user"}
+            has_essential = required.issubset(names)
+
+            logger.debug(f"FB cookies found: {names}, has essential: {has_essential}")
+            return has_essential
+        except Exception as e:
+            logger.error(f"Error checking FB essential cookies: {e}")
+            return False
+
     async def validate_cookies(self, platform: str) -> bool:
-        """Validate cookies by testing with yt-dlp"""
+        """Validate cookies by testing with yt-dlp (with soft validation for Facebook)"""
         cookie_path = None
         try:
             # Decrypt temporarily
@@ -334,11 +355,22 @@ class CookieManager:
             if not cookie_path:
                 return False
 
-            # Get test URL
-            test_url = TEST_URLS.get(platform)
-            if not test_url:
+            # Get test URL(s)
+            test_urls = TEST_URLS.get(platform)
+            if not test_urls:
                 logger.warning(f"⚠️ No test URL defined for {platform}")
                 return False
+
+            # Convert single URL to list for uniform handling
+            if isinstance(test_urls, str):
+                test_urls = [test_urls]
+
+            # Special handling for Facebook with soft validation
+            if platform == 'facebook':
+                return await self._validate_facebook_cookies(cookie_path, test_urls)
+
+            # Standard validation for other platforms
+            test_url = test_urls[0] if isinstance(test_urls, list) else test_urls
 
             # Test with yt-dlp
             ydl_opts = {
@@ -367,6 +399,7 @@ class CookieManager:
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)
                 metadata['validated'] = True
+                metadata['validation_type'] = 'full'
                 metadata['last_validated'] = datetime.now().isoformat()
                 with open(metadata_path, 'w') as f:
                     json.dump(metadata, f, indent=2)
@@ -390,6 +423,81 @@ class CookieManager:
                     os.remove(cookie_path)
                 except:
                     pass
+
+    async def _validate_facebook_cookies(self, cookie_path: str, test_urls: list) -> bool:
+        """Validate Facebook cookies with soft validation fallback"""
+        has_essential = self._fb_has_essential_cookies(cookie_path)
+
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_path,
+            'skip_download': True,
+            'extract_flat': True,
+        }
+
+        loop = asyncio.get_event_loop()
+        last_error = None
+        validation_ok = False
+
+        # Try each URL
+        for url in test_urls:
+            try:
+                def test_extract():
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.extract_info(url, download=False)
+
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, test_extract),
+                    timeout=30
+                )
+                validation_ok = True
+                logger.info(f"✅ Facebook cookies validated with URL: {url}")
+                break
+            except Exception as e:
+                last_error = str(e)
+                error_lower = last_error.lower()
+
+                # Check if it's an unsupported URL or login-related error
+                if "unsupported url" in error_lower or "login" in error_lower:
+                    logger.debug(f"URL {url} not supported or requires login: {e}")
+                    continue
+                else:
+                    logger.debug(f"Validation attempt failed for {url}: {e}")
+                    continue
+
+        # Update metadata based on validation result
+        metadata_path = COOKIES_ENCRYPTED_DIR / "facebook.json"
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+
+            if validation_ok:
+                # Full validation passed
+                metadata['validated'] = True
+                metadata['validation_type'] = 'full'
+                metadata['last_validated'] = datetime.now().isoformat()
+                self._log_event("✅ Facebook cookies validated successfully (full)")
+                logger.info("✅ Facebook cookies validated successfully (full)")
+            elif has_essential:
+                # Soft validation - essential cookies present
+                metadata['validated'] = True
+                metadata['validation_type'] = 'soft'
+                metadata['last_validated'] = datetime.now().isoformat()
+                self._log_event("ℹ️ Facebook cookies soft-validated (xs + c_user present)")
+                logger.warning("⚠️ Facebook validation inconclusive; core cookies present -> accepting as valid (soft)")
+                validation_ok = True
+            else:
+                # No validation and no essential cookies
+                metadata['validated'] = False
+                metadata['validation_type'] = 'failed'
+                metadata['last_error'] = last_error or "Missing essential cookies"
+                self._log_event(f"❌ Facebook cookie validation failed: {last_error}")
+
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+        return validation_ok if validation_ok else has_essential
 
     def get_cookie_status(self) -> dict:
         """Get status of all encrypted cookies"""
