@@ -487,10 +487,31 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         'fragment_retries': 20,
         'http_chunk_size': 10485760,  # 10MB
         'buffersize': 1024 * 1024,  # 1MB
+        # إعدادات التوافق العامة
+        'compat_opts': ['no-youtube-unavailable-videos'],
     }
 
-    # دعم ملف cookies.txt إذا كان موجوداً
-    if os.path.exists('cookies.txt'):
+    # دعم cookies من المتصفح أو ملف cookies.txt
+    cookies_loaded = False
+
+    # محاولة تحميل cookies من Chrome أولاً (للمنصات الاجتماعية)
+    if is_tiktok or is_instagram or is_facebook:
+        try:
+            ydl_opts['cookiesfrombrowser'] = ('chrome',)
+            cookies_loaded = True
+            logger.info("✅ Using cookies from Chrome browser")
+        except Exception as e:
+            logger.debug(f"Could not load Chrome cookies: {e}")
+            # محاولة Firefox
+            try:
+                ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                cookies_loaded = True
+                logger.info("✅ Using cookies from Firefox browser")
+            except Exception as e2:
+                logger.debug(f"Could not load Firefox cookies: {e2}")
+
+    # إذا فشل تحميل cookies من المتصفح، استخدم ملف cookies.txt
+    if not cookies_loaded and os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
         logger.info("✅ Using cookies.txt for authentication")
     
@@ -533,7 +554,9 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             'format': 'best',  # Facebook يحتاج 'best' فقط
             'extractor_args': {
                 'facebook': {
-                    'timeout': 60
+                    'timeout': 60,
+                    'app_id': '87741124305',  # Facebook app_id للوصول إلى API
+                    'use_hacks': ['headers']  # استخدام headers محسّنة
                 }
             },
             # User-Agent مهم لـ Facebook
@@ -557,25 +580,37 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             },
             'extractor_args': {
                 'instagram': {
-                    'timeout': 60
+                    'timeout': 60,
+                    'app_id': '567067343352427',  # Instagram app_id الرسمي
+                    'use_hacks': ['headers']  # استخدام headers محسّنة
                 }
             }
         })
     
     # إعدادات خاصة لـ TikTok - مُحسّنة للصور والفيديوهات
     elif is_tiktok:
+        # إضافة tiktok-impersonate-browser إلى compat_opts
+        if 'compat_opts' in ydl_opts:
+            ydl_opts['compat_opts'].append('tiktok-impersonate-browser')
+        else:
+            ydl_opts['compat_opts'] = ['tiktok-impersonate-browser']
+
         ydl_opts.update({
             'format': 'best',
             # إعدادات مهمة لتيك توك
             'writesubtitles': False,
             'writethumbnail': False,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
                 'Referer': 'https://www.tiktok.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
             },
             'extractor_args': {
                 'tiktok': {
-                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com'
+                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
+                    'player_client': ['android'],  # استخدام Android client
+                    'timeout': 60
                 }
             }
         })
@@ -622,13 +657,35 @@ async def upload_to_server(file_path: str, user_id: int):
 async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, reply_to_message_id, duration, info_dict, max_retries=3):
     """
     محاولة إرسال الملف مع إعادة المحاولة في حالة TimedOut
+    يستخدم sendDocument للملفات الكبيرة (>48MB)
     """
+    # فحص حجم الملف
+    file_size = os.path.getsize(file_path)
+    file_size_mb = file_size / (1024 * 1024)
+    use_document = file_size > (48 * 1024 * 1024)  # 48MB
+
+    if use_document:
+        logger.info(f"📦 الملف كبير ({file_size_mb:.1f}MB) - سيتم استخدام sendDocument بدلاً من send_audio/video")
+
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"🔄 محاولة رفع الملف (المحاولة {attempt}/{max_retries})")
 
             with open(file_path, 'rb') as file:
-                if is_audio:
+                if use_document:
+                    # استخدام sendDocument للملفات الكبيرة
+                    sent_message = await context.bot.send_document(
+                        chat_id=chat_id,
+                        document=file,
+                        caption=caption[:1024],
+                        reply_to_message_id=reply_to_message_id,
+                        read_timeout=600,  # 10 دقائق للملفات الكبيرة
+                        write_timeout=600,  # 10 دقائق
+                        connect_timeout=120,
+                        pool_timeout=120
+                    )
+                    logger.info(f"✅ تم رفع الملف كمستند ({file_size_mb:.1f}MB)")
+                elif is_audio:
                     sent_message = await context.bot.send_audio(
                         chat_id=chat_id,
                         audio=file,
@@ -663,7 +720,11 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
             logger.warning(f"⏱️ TimedOut في المحاولة {attempt}/{max_retries}: {e}")
 
             if attempt < max_retries:
-                wait_time = attempt * 2  # تأخير تدريجي: 2، 4، 6 ثانية
+                # تأخير أطول للملفات الكبيرة
+                if use_document:
+                    wait_time = attempt * 5  # 5، 10، 15 ثانية للملفات الكبيرة
+                else:
+                    wait_time = attempt * 2  # 2، 4، 6 ثانية للملفات العادية
                 logger.info(f"⏳ انتظار {wait_time} ثانية قبل إعادة المحاولة...")
                 await asyncio.sleep(wait_time)
             else:
@@ -1200,14 +1261,27 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             error_message=error_message[:500]  # حد 500 حرف
         )
 
-        # 2. إرسال تقرير إلى قناة السجلات
+        # 2. إرسال تقرير إلى قناة السجلات مع تفاصيل المنصة
+        platform_name = "Unknown"
+        if 'tiktok.com' in url:
+            platform_name = "TikTok"
+        elif 'instagram.com' in url:
+            platform_name = "Instagram"
+        elif 'facebook.com' in url or 'fb.watch' in url:
+            platform_name = "Facebook"
+        elif 'youtube.com' in url or 'youtu.be' in url:
+            platform_name = "YouTube"
+        elif 'twitter.com' in url or 'x.com' in url:
+            platform_name = "Twitter/X"
+
         if LOG_CHANNEL_ID:
             try:
                 log_channel_id = int(LOG_CHANNEL_ID)
                 error_report_text = (
-                    "⚠️ **فشل تحميل جديد**\n\n"
+                    f"⚠️ **فشل تحميل جديد من {platform_name}**\n\n"
                     f"👤 المستخدم: @{username} (ID: {user_id})\n"
                     f"🔗 الرابط: {url[:100]}\n"
+                    f"📱 المنصة: `{platform_name}`\n"
                     f"⚠️ نوع الخطأ: `{error_type}`\n"
                     f"💬 الرسالة: `{error_message[:200]}`\n"
                     f"🕒 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -1223,12 +1297,50 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             except Exception as log_error:
                 log_warning(f"❌ فشل إرسال تقرير الخطأ لقناة السجلات: {log_error}", module="handlers/download.py")
 
-        # 3. إشعار المستخدم بالفشل وإبلاغ المدير
-        error_text = (
-            "❌ **حدث خطأ أثناء تحميل المقطع!**\n\n"
-            "📩 تم إرسال مشكلتك إلى المدير، وسيتم إعلامك عند التصليح.\n\n"
-            "شكراً لصبرك! 💚"
-        )
+        # 3. إشعار المستخدم بالفشل مع رسالة مخصصة حسب المنصة
+        error_text = "❌ **حدث خطأ أثناء تحميل المقطع!**\n\n"
+
+        # رسائل مخصصة حسب نوع الخطأ والمنصة
+        if "login" in error_message.lower() or "sign in" in error_message.lower() or "comfortable" in error_message.lower():
+            # TikTok/Instagram يطلب تسجيل دخول
+            if 'tiktok.com' in url:
+                error_text += (
+                    "🔐 **هذا المقطع من TikTok يتطلب تسجيل دخول**\n\n"
+                    "💡 الحلول المتاحة:\n"
+                    "• جرب رابط مقطع آخر عام\n"
+                    "• أو انسخ الرابط من المتصفح مباشرة\n\n"
+                )
+            elif 'instagram.com' in url:
+                error_text += (
+                    "🔐 **هذا المقطع من Instagram قد يكون خاصاً**\n\n"
+                    "💡 جرب رابط مقطع عام آخر\n\n"
+                )
+        elif "csrf" in error_message.lower() or "token" in error_message.lower():
+            # مشكلة csrf token في Instagram
+            error_text += (
+                "🔄 **مشكلة مؤقتة في الاتصال بـ Instagram**\n\n"
+                "💡 جرب الرابط مرة أخرى بعد قليل\n\n"
+            )
+        elif "unavailable" in error_message.lower() or "private" in error_message.lower():
+            # فيديو غير متاح أو خاص
+            error_text += (
+                "🔒 **المقطع غير متاح أو خاص**\n\n"
+                "💡 تأكد أن الرابط صحيح ومتاح للعامة\n\n"
+            )
+        elif "nsig" in error_message.lower():
+            # مشكلة YouTube nsig
+            error_text += (
+                "⚠️ **مشكلة مؤقتة في فك تشفير YouTube**\n\n"
+                "💡 جرب مرة أخرى خلال دقائق\n\n"
+            )
+        else:
+            # رسالة عامة
+            error_text += (
+                "📩 تم إرسال مشكلتك إلى المدير\n"
+                "🔔 سيتم إعلامك عند التصليح\n\n"
+            )
+
+        error_text += "شكراً لصبرك! 💚"
 
         try:
             await processing_message.edit_text(error_text, parse_mode='Markdown')
