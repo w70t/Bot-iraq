@@ -4,6 +4,7 @@ import time
 import requests
 import subprocess
 import re
+import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -140,21 +141,19 @@ class DownloadProgressTracker:
 
                     update_text = (
                         f"{status_emoji} **جاري التحميل...**\n\n"
-                        f"{progress_bar}\n\n"
-                        f"📊 **التقدم:** {percentage}%\n"
-                        f"📦 **الحجم:** {downloaded_mb:.1f} / {total_mb:.1f} MB\n"
-                        f"⚡ **السرعة:** {speed_text}\n"
-                        f"⏱️ **المتبقي:** {eta_text}\n\n"
-                        f"💬 **{self.quote['ar']}**\n"
-                        f"_{self.quote['en']}_"
+                        f"{progress_bar}\n"
+                        f"⚡ {speed_text} | ⏱️ ETA: {eta_text}\n"
+                        f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n\n"
+                        f"💬 _{self.quote['ar']}_\n"
+                        f"💬 _{self.quote['en']}_"
                     )
 
                     try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(self.message.edit_text(update_text, parse_mode='Markdown'))
+                        # تحديث نفس الرسالة
+                        asyncio.create_task(self.message.edit_text(update_text, parse_mode='Markdown'))
                     except Exception as e:
                         # تجاهل أخطاء تحديث الرسالة (مثل message not modified)
-                        logger.debug(f"تحديث التقدم تم تجاهله: {e}")
+                        pass
 
             except Exception as e:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
@@ -214,8 +213,8 @@ def is_adult_content(url: str, title: str = "") -> bool:
     
     return False
 
-async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message):
-    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ"""
+async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message, is_audio: bool = False):
+    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
     if not LOG_CHANNEL_ID:
         return
 
@@ -229,11 +228,16 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     user_name = user.full_name
     username = f"@{user.username}" if user.username else "مجهول"
 
-    video_title = video_info.get('title', 'غير متوفر (No title)')
-    video_url = video_info.get('webpage_url', 'N/A')
+    media_title = video_info.get('title', 'غير متوفر (No title)')
+    media_url = video_info.get('webpage_url', 'N/A')
     duration = video_info.get('duration', 0)
     view_count = video_info.get('view_count', 0)
     like_count = video_info.get('like_count', 0)
+
+    # تحديد نوع الوسائط
+    media_type = "🎧 صوت" if is_audio else "🎥 فيديو"
+    media_emoji = "🎧" if is_audio else "🎥"
+    media_text = "صوت" if is_audio else "فيديو"
 
     # تنسيق عدد المشاهدات والإعجابات
     if view_count > 0:
@@ -281,7 +285,7 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
 
     try:
-        # 1) Forward الفيديو إلى قناة السجلات
+        # 1) Forward الوسائط (فيديو أو صوت) إلى قناة السجلات
         forwarded = await context.bot.forward_message(
             chat_id=log_channel_id,
             from_chat_id=update.effective_chat.id,
@@ -290,16 +294,17 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
 
         # 2) إرسال رسالة نصية منسقة قابلة للنسخ بالكامل
         info_text = (
-            "🎥 **فيديو جديد تم معالجته**\n"
-            f"👤 المستخدم: @{username} (ID: {user_id})\n"
-            f"🔗 الرابط: {video_url}\n"
-            f"🎞️ العنوان: {video_title}\n"
-            f"📊 المشاهدات: {views_text}\n"
-            f"💬 التفاعلات: {likes_text}\n"
-            f"⏱️ المدة: {duration_text}\n"
-            f"📦 الحجم: {size_text}\n"
-            f"📅 الوقت: {timestamp}\n"
-            f"🎬 **الفيديو مرفق أعلاه مباشرة.**"
+            f"{media_emoji} **{media_text} جديد تم معالجته**\n\n"
+            f"👤 **المستخدم:** {username} (ID: `{user_id}`)\n"
+            f"🔗 **الرابط:** {media_url}\n"
+            f"🎞️ **العنوان:** {media_title}\n"
+            f"📊 **المشاهدات:** {views_text}\n"
+            f"💬 **التفاعلات:** {likes_text}\n"
+            f"⏱️ **المدة:** {duration_text}\n"
+            f"📦 **الحجم:** {size_text}\n"
+            f"🎭 **النوع:** {media_type}\n"
+            f"📅 **الوقت:** {timestamp}\n\n"
+            f"✨ **الوسائط مرفقة أعلاه مباشرة.**"
         )
 
         # الانتظار ثانية واحدة قبل إرسال النص لضمان ترتيب الرسائل
@@ -312,10 +317,10 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
             disable_web_page_preview=True
         )
 
-        logger.info(f"✅ تم إرسال الفيديو ورسالة نصية قابلة للنسخ إلى قناة السجلات")
+        logger.info(f"✅ تم إرسال {media_text} ورسالة نصية قابلة للنسخ إلى قناة السجلات")
 
     except Exception as e:
-        log_warning(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}", module="handlers/download.py")
+        log_warning(f"❌ فشل إرسال {media_text} إلى قناة السجل: {e}", module="handlers/download.py")
 
 async def show_quality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, info_dict: dict):
     """عرض قائمة اختيار الجودة - مبسطة"""
@@ -952,12 +957,14 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
         with open(final_video_path, 'rb') as file:
             if is_audio:
-                await context.bot.send_audio(
+                sent_message = await context.bot.send_audio(
                     chat_id=update.effective_chat.id,
                     audio=file,
                     caption=caption_text[:1024],
-                    reply_to_message_id=update.effective_message.message_id
+                    reply_to_message_id=update.effective_message.message_id,
+                    duration=duration
                 )
+                logger.info(f"✅ تم تحميل الصوت بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
             else:
                 sent_message = await context.bot.send_video(
                     chat_id=update.effective_chat.id,
@@ -969,6 +976,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     height=info_dict.get('height'),
                     duration=duration
                 )
+                logger.info(f"✅ تم تحميل الفيديو بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
 
                 # إرسال تقرير احترافي لقناة الفيديوهات - DISABLED to avoid duplicates
                 # Now using forward-only send_log_to_channel instead
@@ -1003,7 +1011,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
                 )
         
-        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message)
+        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message, is_audio)
         
         # تسجيل الإحصائيات - تحميل ناجح
         from database import record_download_attempt
