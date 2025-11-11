@@ -553,11 +553,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     """
     إعدادات yt-dlp محسّنة حسب المنصة
     """
-    # تحديد المنصة
+    # تحديد المنصة (V5.1 - Extended Platform Detection)
     is_facebook = 'facebook.com' in url or 'fb.watch' in url or 'fb.com' in url
     is_instagram = 'instagram.com' in url
     is_tiktok = 'tiktok.com' in url or 'vm.tiktok.com' in url or 'vt.tiktok.com' in url
-    is_pinterest = 'pinterest.com' in url or 'pin.it' in url  # ⭐ إضافة Pinterest
+    is_pinterest = 'pinterest.com' in url or 'pin.it' in url
+    is_reddit = 'reddit.com' in url
+    is_twitter = 'twitter.com' in url or 'x.com' in url
+    is_vimeo = 'vimeo.com' in url
+    is_dailymotion = 'dailymotion.com' in url
+    is_twitch = 'twitch.tv' in url
     
     # الجودة
     quality_formats = {
@@ -587,16 +592,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         'compat_opts': ['no-youtube-unavailable-videos'],
     }
 
-    # دعم cookies - Auto-Detection V5.0 Ultra Secure
+    # دعم cookies - Auto-Detection V5.1 with Platform Linking
     cookies_loaded = False
 
-    # محاولة تحميل cookies من Chrome أولاً (للمنصات الاجتماعية)
-    if is_tiktok or is_instagram or is_facebook:
-        # 1️⃣ Try encrypted cookies first (V5.0 Auto Cookie Management)
+    # محاولة تحميل cookies للمنصات الاجتماعية مع دعم الربط (V5.1)
+    if is_tiktok or is_instagram or is_facebook or is_pinterest or is_reddit or is_twitter or is_vimeo or is_dailymotion or is_twitch:
+        # 1️⃣ Try encrypted cookies first (V5.1 with Platform Linking)
         try:
-            from handlers.cookie_manager import cookie_manager
+            from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
 
-            # Detect platform
+            # Detect platform with linking support
             platform = None
             if is_tiktok:
                 platform = 'tiktok'
@@ -604,14 +609,34 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 platform = 'facebook'
             elif is_instagram:
                 platform = 'instagram'
+            elif is_pinterest:
+                platform = 'pinterest'  # Links to Instagram
+            elif is_reddit:
+                platform = 'reddit'  # Links to Facebook
+            elif is_twitter:
+                platform = 'twitter'  # Links to General
+            elif is_vimeo:
+                platform = 'vimeo'  # Links to General
+            elif is_dailymotion:
+                platform = 'dailymotion'  # Links to General
+            elif is_twitch:
+                platform = 'twitch'  # Links to General
 
             if platform:
-                # Try to decrypt and use encrypted cookies
-                cookie_path = cookie_manager.decrypt_cookie_file(platform)
-                if cookie_path:
-                    ydl_opts['cookiefile'] = cookie_path
-                    cookies_loaded = True
-                    logger.info(f"✅ Using encrypted cookies for {platform} (V5.0)")
+                # Get the actual cookie file (handles linking)
+                cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower())
+
+                if cookie_file:
+                    # Try to decrypt and use encrypted cookies
+                    cookie_path = cookie_manager.decrypt_cookie_file(cookie_file)
+                    if cookie_path:
+                        ydl_opts['cookiefile'] = cookie_path
+                        cookies_loaded = True
+
+                        if cookie_file != platform:
+                            logger.info(f"✅ Using encrypted {cookie_file} cookies for {platform} (V5.1 Linked)")
+                        else:
+                            logger.info(f"✅ Using encrypted cookies for {platform} (V5.1)")
         except Exception as e:
             logger.debug(f"Could not load encrypted cookies: {e}")
 

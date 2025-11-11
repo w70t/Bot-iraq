@@ -965,33 +965,33 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إدارة المكتبات والمنصات"""
+    """إدارة المكتبات والمنصات مع دعم الكوكيز المتكامل (V5.1)"""
     query = update.callback_query
     await query.answer()
-    
+
     # جلب إعدادات المكتبات
     from database import (
         get_library_settings, get_allowed_platforms, get_library_status,
         get_performance_metrics, get_pending_approvals
     )
-    
+
     settings = get_library_settings()
     if not settings:
         await query.edit_message_text("❌ خطأ في تحميل إعدادات المكتبات")
         return MAIN_MENU
-    
+
     allowed_platforms = get_allowed_platforms()
     library_status = get_library_status()
     performance = get_performance_metrics()
     pending_approvals = get_pending_approvals()
-    
+
     # إنشاء نص التقرير
     total_downloads = performance.get('total_downloads', 0)
     success_rate = 0
     if total_downloads > 0:
         successful = performance.get('successful_downloads', 0)
         success_rate = (successful / total_downloads) * 100
-    
+
     message_text = (
         "📚 **إدارة المكتبات والمنصات**\n\n"
         f"🟢 **المكتبة الأساسية:** {settings.get('primary_library', 'yt-dlp')}\n"
@@ -1000,13 +1000,14 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• إجمالي التحميلات: {total_downloads}\n"
         f"• معدل النجاح: {success_rate:.1f}%\n"
         f"• متوسط السرعة: {performance.get('avg_download_speed', 0):.1f} MB/s\n\n"
-        f"🎯 **المنصات المسموحة:** {len(allowed_platforms)}/6\n"
+        f"🎯 **المنصات المسموحة:** {len(allowed_platforms)}/10\n\n"
+        "🍪 **حالة الكوكيز المدمجة:**\n"
     )
-    
+
     # ⭐ إضافة معلومات المنصات - قائمة موسعة
     platform_emojis = {
         'youtube': '🔴',
-        'facebook': '🔵', 
+        'facebook': '🔵',
         'instagram': '🟣',
         'tiktok': '⚫',
         'pinterest': '🔴',
@@ -1016,11 +1017,11 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'dailymotion': '🟡',
         'twitch': '🟣'
     }
-    
+
     platform_names = {
         'youtube': 'YouTube',
         'facebook': 'Facebook',
-        'instagram': 'Instagram', 
+        'instagram': 'Instagram',
         'tiktok': 'TikTok',
         'pinterest': 'Pinterest',
         'twitter': 'Twitter/X',
@@ -1029,14 +1030,51 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'dailymotion': 'Dailymotion',
         'twitch': 'Twitch'
     }
-    
-    # عرض جميع المنصات
+
+    # Get cookie status for all platforms (V5.1)
+    try:
+        from handlers.cookie_manager import cookie_manager
+        cookie_status_available = True
+    except Exception as e:
+        logger.error(f"❌ Failed to import cookie_manager: {e}")
+        cookie_status_available = False
+
+    # عرض جميع المنصات مع حالة الكوكيز
     all_platforms = ['youtube', 'facebook', 'instagram', 'tiktok', 'pinterest', 'twitter', 'reddit', 'vimeo', 'dailymotion', 'twitch']
     for platform in all_platforms:
         status = "✅" if platform in allowed_platforms else "❌"
         emoji = platform_emojis.get(platform, '🔗')
         name = platform_names.get(platform, platform)
-        message_text += f"{status} {emoji} {name}\n"
+
+        # Get cookie status for this platform (V5.1)
+        cookie_info = ""
+        if cookie_status_available:
+            try:
+                cookie_stat = cookie_manager.get_platform_cookie_status(platform)
+
+                if not cookie_stat.get('needs_cookies', True):
+                    cookie_info = " (لا يحتاج كوكيز)"
+                elif cookie_stat.get('exists', False):
+                    age_days = cookie_stat.get('age_days', 0)
+
+                    # Check if cookies are linked to another platform
+                    if cookie_stat.get('linked', False):
+                        linked_to = cookie_stat.get('cookie_file', '').capitalize()
+                        cookie_info = f" 🔗→{linked_to}"
+
+                    # Cookie age status
+                    if age_days > 30:
+                        cookie_info += f" ⚠️ {age_days}d"
+                    elif age_days > 0:
+                        cookie_info += f" ✅ {age_days}d"
+                    else:
+                        cookie_info += " ✅"
+                else:
+                    cookie_info = " 🍪❌"
+            except Exception as e:
+                logger.debug(f"Could not get cookie status for {platform}: {e}")
+
+        message_text += f"{status} {emoji} {name}{cookie_info}\n"
     
     if pending_approvals:
         message_text += f"\n🔔 **طلبات الانتظار:** {len(pending_approvals)}"
@@ -1052,27 +1090,38 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if pending_approvals:
         keyboard.insert(0, [InlineKeyboardButton("📩 عرض الطلبات المعلقة", callback_data="library_approvals")])
     
-    # إضافة أزرار المنصات - 3 منصات في كل صف
+    # إضافة أزرار المنصات مع أزرار الكوكيز المدمجة (V5.1)
     platform_rows = []
-    current_row = []
-    
+
     for platform in all_platforms:
         status = "❌" if platform in allowed_platforms else "✅"
         name = platform_names.get(platform, platform)
         callback_data_str = f"platform_disable_{platform}" if platform in allowed_platforms else f"platform_enable_{platform}"
-        
-        # ⚠️ FIX: استخدام callback_data كمعامل مسمى بدلاً من موضعي
-        current_row.append(InlineKeyboardButton(f"{status} {name}", callback_data=callback_data_str))
-        
-        # كل 3 منصات، ننشئ صف جديد
-        if len(current_row) == 3:
-            platform_rows.append(current_row)
-            current_row = []
-    
-    # إضافة آخر صف إذا كان غير مكتمل
-    if current_row:
-        platform_rows.append(current_row)
-    
+
+        # صف واحد لكل منصة: زر التفعيل + زر الكوكيز
+        row = [InlineKeyboardButton(f"{status} {name}", callback_data=callback_data_str)]
+
+        # إضافة زر الكوكيز إذا كانت المنصة تحتاج كوكيز (V5.1)
+        if cookie_status_available:
+            try:
+                cookie_stat = cookie_manager.get_platform_cookie_status(platform)
+
+                if cookie_stat.get('needs_cookies', True):
+                    # Check if cookies exist
+                    if cookie_stat.get('exists', False):
+                        cookie_btn_text = "🍪✅"
+                    else:
+                        cookie_btn_text = "🍪➕"
+
+                    row.append(InlineKeyboardButton(
+                        cookie_btn_text,
+                        callback_data=f"upload_cookie_{platform}"
+                    ))
+            except Exception as e:
+                logger.debug(f"Could not add cookie button for {platform}: {e}")
+
+        platform_rows.append(row)
+
     keyboard.extend(platform_rows)
     
     keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="admin_back")])
@@ -2524,11 +2573,187 @@ async def handle_cookie_delete_all(update: Update, context: ContextTypes.DEFAULT
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Platform Cookie Upload Integration (V5.1)
+# ═══════════════════════════════════════════════════════════════
+
+async def handle_upload_cookie_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء عملية رفع الكوكيز لمنصة محددة (V5.1)"""
+    query = update.callback_query
+    await query.answer()
+
+    # Extract platform from callback_data: "upload_cookie_facebook"
+    platform = query.data.replace("upload_cookie_", "")
+    context.user_data['cookie_upload_platform'] = platform
+
+    # Get platform display name
+    platform_names = {
+        'youtube': 'YouTube',
+        'facebook': 'Facebook',
+        'instagram': 'Instagram',
+        'tiktok': 'TikTok',
+        'pinterest': 'Pinterest',
+        'twitter': 'Twitter/X',
+        'reddit': 'Reddit',
+        'vimeo': 'Vimeo',
+        'dailymotion': 'Dailymotion',
+        'twitch': 'Twitch'
+    }
+    platform_name = platform_names.get(platform, platform.capitalize())
+
+    # Check if this platform uses linked cookies
+    try:
+        from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
+
+        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower())
+        linked_info = ""
+
+        if cookie_file and cookie_file != platform.lower():
+            linked_platform = cookie_file.capitalize()
+            linked_info = f"\n\n🔗 **ملاحظة:** {platform_name} يستخدم كوكيز {linked_platform}"
+
+    except Exception as e:
+        logger.error(f"Error getting cookie link info: {e}")
+        linked_info = ""
+
+    text = (
+        f"🍪 **رفع كوكيز {platform_name}**\n\n"
+        f"📤 أرسل ملف الكوكيز الآن أو الصق محتوى الملف\n\n"
+        f"📋 **التنسيق المطلوب:**\n"
+        f"• Netscape cookies.txt format\n"
+        f"• يمكنك تصدير الكوكيز من المتصفح باستخدام إضافة Cookie Exporter\n"
+        f"• يتم التشفير تلقائيًا بـ AES-256{linked_info}\n\n"
+        f"❌ للإلغاء، اضغط /cancel"
+    )
+
+    await query.edit_message_text(
+        text,
+        parse_mode='Markdown'
+    )
+
+    return AWAITING_PLATFORM_COOKIE
+
+
+async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة رفع الكوكيز للمنصة المحددة (V5.1)"""
+    platform = context.user_data.get('cookie_upload_platform')
+
+    if not platform:
+        await update.message.reply_text("❌ خطأ: لم يتم تحديد المنصة. الرجاء المحاولة مرة أخرى.")
+        return MAIN_MENU
+
+    try:
+        from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
+        import tempfile
+
+        # Get the actual cookie file name (handles linking)
+        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower(), platform.lower())
+
+        if cookie_file is None:
+            await update.message.reply_text(
+                f"❌ منصة {platform.capitalize()} لا تحتاج إلى كوكيز"
+            )
+            return MAIN_MENU
+
+        status_msg = await update.message.reply_text("⏳ جاري معالجة الكوكيز...")
+
+        # Handle file upload
+        if update.message.document:
+            file = await update.message.document.get_file()
+            file_content = await file.download_as_bytearray()
+            cookie_data = file_content.decode('utf-8')
+        # Handle text message (pasted cookies)
+        elif update.message.text and not update.message.text.startswith('/'):
+            cookie_data = update.message.text
+        else:
+            await status_msg.edit_text("❌ يرجى إرسال ملف كوكيز أو لصق محتوى الملف")
+            return AWAITING_PLATFORM_COOKIE
+
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
+            tmp_file.write(cookie_data)
+            tmp_path = tmp_file.name
+
+        try:
+            # Encrypt the cookie file
+            success = cookie_manager.encrypt_cookie_file(tmp_path, cookie_file)
+
+            if success:
+                await status_msg.edit_text(f"🔐 تم تشفير الكوكيز بنجاح\n⏳ جاري التحقق من الصلاحية...")
+
+                # Validate cookies
+                is_valid = await cookie_manager.validate_cookies(cookie_file)
+
+                if is_valid:
+                    linked_info = ""
+                    if cookie_file != platform.lower():
+                        linked_info = f"\n🔗 مرتبط بـ: {cookie_file.capitalize()}"
+
+                    await status_msg.edit_text(
+                        f"✅ **تم رفع كوكيز {platform.capitalize()} بنجاح!**\n\n"
+                        f"🔐 تم التشفير بـ AES-256\n"
+                        f"✅ تم التحقق من الصلاحية{linked_info}\n\n"
+                        f"يمكنك الآن استخدام روابط {platform.capitalize()}"
+                    )
+                else:
+                    await status_msg.edit_text(
+                        f"⚠️ **تم رفع الكوكيز ولكن فشل التحقق**\n\n"
+                        f"🔐 تم التشفير والحفظ\n"
+                        f"❌ قد تكون الكوكيز منتهية الصلاحية\n\n"
+                        f"جرّب تصدير كوكيز جديدة من المتصفح"
+                    )
+            else:
+                await status_msg.edit_text(
+                    f"❌ فشل تشفير الكوكيز\n"
+                    f"تأكد من تنسيق الملف (Netscape format)"
+                )
+
+        finally:
+            # Clean up temp file
+            import os
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+        # Clear user data
+        context.user_data.pop('cookie_upload_platform', None)
+
+        # Return to platform management
+        await update.message.reply_text(
+            "✅ العودة إلى لوحة إدارة المنصات",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+            ]])
+        )
+
+        return MAIN_MENU
+
+    except Exception as e:
+        logger.error(f"Error uploading platform cookie: {e}")
+        await update.message.reply_text(
+            f"❌ حدث خطأ أثناء رفع الكوكيز:\n{str(e)}"
+        )
+        context.user_data.pop('cookie_upload_platform', None)
+        return MAIN_MENU
+
+
+async def cancel_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء عملية رفع الكوكيز (V5.1)"""
+    context.user_data.pop('cookie_upload_platform', None)
+    await update.message.reply_text(
+        "❌ تم إلغاء رفع الكوكيز",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
+        ]])
+    )
+    return MAIN_MENU
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Broadcast System Enhancement - Individual User Messaging
 # ═══════════════════════════════════════════════════════════════
 
 AWAITING_USER_ID_BROADCAST = 8
 AWAITING_MESSAGE_BROADCAST = 9
+AWAITING_PLATFORM_COOKIE = 12  # Cookie upload per platform (V5.1)
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء نظام الإرسال الجماعي المُحسّن"""
@@ -2812,6 +3037,8 @@ admin_conv_handler = ConversationHandler(
             # Cookie deletion confirmation callbacks
             CallbackQueryHandler(confirm_delete_all_cookies_callback, pattern='^confirm_delete_all_cookies$'),
             CallbackQueryHandler(cancel_delete_cookies_callback, pattern='^cancel_delete_cookies$'),
+            # Platform Cookie Upload (V5.1)
+            CallbackQueryHandler(handle_upload_cookie_button, pattern='^upload_cookie_'),
             # Broadcast System Enhanced
             CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
             CallbackQueryHandler(broadcast_all_start, pattern='^broadcast_all$'),
@@ -2861,6 +3088,11 @@ admin_conv_handler = ConversationHandler(
         ],
         AWAITING_MESSAGE_BROADCAST: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, send_broadcast),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_PLATFORM_COOKIE: [
+            MessageHandler((filters.TEXT | filters.Document.ALL) & ~filters.COMMAND, handle_platform_cookie_upload),
+            CommandHandler('cancel', cancel_platform_cookie_upload),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },
