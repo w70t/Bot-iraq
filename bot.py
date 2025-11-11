@@ -438,7 +438,15 @@ def main() -> None:
 
     # 4. Handler للفيديوهات المرسلة
     application.add_handler(MessageHandler(filters.VIDEO, handle_video_message))
-    
+
+    # 4.5. Cookie Management V5.0: Handler لرفع ملفات cookies
+    try:
+        from handlers.cookie_manager import handle_cookie_upload
+        application.add_handler(MessageHandler(filters.Document.ALL, handle_cookie_upload))
+        logger.info("✅ تم تسجيل معالج رفع ملفات Cookies")
+    except Exception as e:
+        logger.error(f"❌ فشل تسجيل معالج رفع ملفات Cookies: {e}")
+
     # 5. Handler لاختيار اللغة
     application.add_handler(MessageHandler(
         filters.Regex("^(English 🇬🇧|العربية 🇸🇦)$"), 
@@ -568,6 +576,14 @@ def main() -> None:
         setup_daily_report_job(application)
     except Exception as e:
         logger.error(f"❌ فشل جدولة التقرير اليومي: {e}")
+
+    # Cookie Management V5.0: جدولة الفحص الأسبوعي للـ cookies
+    try:
+        from utils import setup_cookie_check_job
+        setup_cookie_check_job(application)
+        logger.info("✅ تم جدولة الفحص الأسبوعي للـ cookies بنجاح")
+    except Exception as e:
+        logger.error(f"❌ فشل جدولة الفحص الأسبوعي للـ cookies: {e}")
 
     # تشغيل البوت
     try:

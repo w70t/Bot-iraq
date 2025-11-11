@@ -28,6 +28,7 @@ from database import (
     generate_daily_report
 )
 from utils import get_message, escape_markdown, admin_only, validate_user_id, validate_days, log_warning
+from handlers.cookie_manager import confirm_delete_all_cookies_callback, cancel_delete_cookies_callback
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
         [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
         [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+        [InlineKeyboardButton("🍪 إدارة Cookies", callback_data="admin_cookies")],
         [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
         [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
         [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
@@ -2243,6 +2245,178 @@ async def receive_daily_limit(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Cookie Management System V5.0 Ultra Secure
+# ═══════════════════════════════════════════════════════════════
+
+async def show_cookie_management_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة إدارة Cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import cookie_manager
+
+    # Get cookie status
+    status = cookie_manager.get_cookie_status()
+
+    # Build status text
+    status_text = ""
+    for platform, info in status.items():
+        platform_emoji = {
+            'facebook': '📘',
+            'instagram': '📸',
+            'tiktok': '🎵'
+        }
+        emoji = platform_emoji.get(platform, '📁')
+
+        if info['exists']:
+            age_days = info.get('age_days', 0)
+            validated = info.get('validated', False)
+
+            if age_days > 30:
+                age_status = f"⚠️ {age_days} يوم"
+            elif age_days > 14:
+                age_status = f"🟡 {age_days} يوم"
+            else:
+                age_status = f"✅ {age_days} يوم"
+
+            val_status = "✅" if validated else "⚠️"
+            status_text += f"{emoji} {platform.capitalize()}: {val_status} ({age_status})\n"
+        else:
+            status_text += f"{emoji} {platform.capitalize()}: ❌ غير موجودة\n"
+
+    message_text = (
+        "🍪 **إدارة Cookies V5.0**\n\n"
+        f"**الحالة الحالية:**\n{status_text}\n"
+        "💡 **المميزات:**\n"
+        "• تشفير AES-256 تلقائي\n"
+        "• اختبار صلاحية فوري\n"
+        "• دعم Stories للمنصات\n"
+        "• فحص أسبوعي تلقائي\n\n"
+        "اختر الإجراء المطلوب:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📋 عرض التفاصيل", callback_data="cookie_status_detail")],
+        [InlineKeyboardButton("🧪 اختبار جميع الـ Cookies", callback_data="cookie_test_all")],
+        [InlineKeyboardButton("📸 اختبار Stories الآن", callback_data="cookie_test_stories")],
+        [InlineKeyboardButton("🔐 معلومات التشفير", callback_data="cookie_encryption_info")],
+        [InlineKeyboardButton("🗑️ حذف جميع الـ Cookies", callback_data="cookie_delete_all")],
+        [InlineKeyboardButton("↩️ العودة", callback_data="admin_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def show_cookie_status_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض تفاصيل حالة Cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import cookie_manager, show_cookie_status
+
+    # Use the existing show_cookie_status function
+    await show_cookie_status(update, context)
+
+    return MAIN_MENU
+
+
+async def handle_cookie_test_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """اختبار جميع Cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import test_all_cookies
+
+    # Use the existing test_all_cookies function
+    await test_all_cookies(update, context)
+
+    return MAIN_MENU
+
+
+async def handle_cookie_test_stories(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """اختبار تحميل Stories"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import test_story_download
+
+    # Use the existing test_story_download function
+    await test_story_download(update, context)
+
+    return MAIN_MENU
+
+
+async def show_cookie_encryption_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض معلومات التشفير"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import COOKIE_KEY_FILE
+    import json
+
+    try:
+        if COOKIE_KEY_FILE.exists():
+            with open(COOKIE_KEY_FILE, 'r') as f:
+                key_data = json.load(f)
+
+            created_at = key_data.get('created_at', 'Unknown')
+            algorithm = key_data.get('algorithm', 'AES-256')
+
+            message_text = (
+                "🔐 **معلومات التشفير**\n\n"
+                f"🔑 الخوارزمية: `{algorithm}`\n"
+                f"📅 تاريخ الإنشاء: `{created_at[:10]}`\n"
+                f"📁 المسار: `cookie_key.json`\n\n"
+                "✅ **الأمان:**\n"
+                "• تشفير AES-256 (Fernet)\n"
+                "• حذف تلقائي للملفات المؤقتة\n"
+                "• تخزين آمن في `/cookies_encrypted/`\n"
+                "• لا يتم حفظ الملفات غير المشفرة\n\n"
+                "⚠️ **تحذير:**\n"
+                "لا تشارك ملف `cookie_key.json` مع أحد!"
+            )
+        else:
+            message_text = (
+                "⚠️ **لم يتم إنشاء مفتاح التشفير بعد**\n\n"
+                "سيتم إنشاؤه تلقائياً عند رفع أول ملف cookies"
+            )
+    except Exception as e:
+        message_text = f"❌ خطأ في قراءة معلومات التشفير: {str(e)}"
+
+    keyboard = [[InlineKeyboardButton("↩️ العودة", callback_data="admin_cookies")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def handle_cookie_delete_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف جميع Cookies"""
+    query = update.callback_query
+    await query.answer()
+
+    from handlers.cookie_manager import delete_all_cookies
+
+    # Use the existing delete_all_cookies function
+    await delete_all_cookies(update, context)
+
+    return MAIN_MENU
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Broadcast System Enhancement - Individual User Messaging
 # ═══════════════════════════════════════════════════════════════
 
@@ -2517,6 +2691,16 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
             CallbackQueryHandler(handle_edit_time_limit, pattern='^edit_time_limit$'),
             CallbackQueryHandler(handle_edit_daily_limit, pattern='^edit_daily_limit$'),
+            # Cookie Management System V5.0
+            CallbackQueryHandler(show_cookie_management_panel, pattern='^admin_cookies$'),
+            CallbackQueryHandler(show_cookie_status_detail, pattern='^cookie_status_detail$'),
+            CallbackQueryHandler(handle_cookie_test_all, pattern='^cookie_test_all$'),
+            CallbackQueryHandler(handle_cookie_test_stories, pattern='^cookie_test_stories$'),
+            CallbackQueryHandler(show_cookie_encryption_info, pattern='^cookie_encryption_info$'),
+            CallbackQueryHandler(handle_cookie_delete_all, pattern='^cookie_delete_all$'),
+            # Cookie deletion confirmation callbacks
+            CallbackQueryHandler(confirm_delete_all_cookies_callback, pattern='^confirm_delete_all_cookies$'),
+            CallbackQueryHandler(cancel_delete_cookies_callback, pattern='^cancel_delete_cookies$'),
             # Broadcast System Enhanced
             CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
             CallbackQueryHandler(broadcast_all_start, pattern='^broadcast_all$'),
