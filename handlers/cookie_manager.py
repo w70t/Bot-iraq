@@ -191,8 +191,9 @@ class CookieManager:
                     continue
 
                 # Parse cookie line: domain, flag, path, secure, expiration, name, value
-                # Support both tabs and multiple spaces as delimiters (Safari Cookie-Editor compatibility)
-                parts = re.split(r'\t+|\s{2,}', line)
+                # Support both tabs and spaces as delimiters (Safari/Chrome Cookie-Editor compatibility)
+                # \s{1,} accepts single or multiple spaces for maximum flexibility
+                parts = re.split(r'\t+|\s+', line.strip())
 
                 # Valid cookie must have at least 6 fields (some exports omit the value field)
                 # Standard Netscape format: domain, flag, path, secure, expiration, name, value
@@ -250,8 +251,9 @@ class CookieManager:
 
             parsed_data = '\n'.join(valid_lines)
 
-            self._log_event(f"✅ Parsed {cookie_count} valid cookies (Platform: {detected_platform or 'unknown'})")
-            logger.info(f"✅ Successfully parsed {cookie_count} cookies")
+            platform_name = detected_platform.capitalize() if detected_platform else 'Unknown'
+            self._log_event(f"✅ Parsed {cookie_count} valid cookies (Platform: {platform_name})")
+            logger.info(f"✅ Parsed {cookie_count} cookies successfully ({platform_name})")
 
             return (True, parsed_data, detected_platform, cookie_count)
 
