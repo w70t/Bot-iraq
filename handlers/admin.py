@@ -2799,9 +2799,9 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(handle_edit_time_limit, pattern='^edit_time_limit$'),
             CallbackQueryHandler(handle_edit_daily_limit, pattern='^edit_daily_limit$'),
             # General Limits Presets (V5.0.1)
-            CallbackQueryHandler(handle_set_time_limit_preset, pattern='^set_limit_\d+$'),
-            CallbackQueryHandler(handle_set_time_limit_preset, pattern='^set_limit_unlimited$'),
-            CallbackQueryHandler(handle_set_time_limit_custom, pattern='^set_limit_custom$'),
+            CallbackQueryHandler(handle_set_time_limit_preset, pattern=r'^set_limit_\d+$'),
+            CallbackQueryHandler(handle_set_time_limit_preset, pattern=r'^set_limit_unlimited$'),
+            CallbackQueryHandler(handle_set_time_limit_custom, pattern=r'^set_limit_custom$'),
             # Cookie Management System V5.0
             CallbackQueryHandler(show_cookie_management_panel, pattern='^admin_cookies$'),
             CallbackQueryHandler(show_cookie_status_detail, pattern='^cookie_status_detail$'),
