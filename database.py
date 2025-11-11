@@ -1345,9 +1345,11 @@ def get_subscription_price():
 # إنشاء مجموعة التحميلات
 try:
     downloads_collection = db.downloads if db is not None else None
+    error_reports_collection = db.error_reports if db is not None else None
 except Exception as e:
     logger.error(f"❌ فشل إنشاء مجموعة التحميلات: {e}")
     downloads_collection = None
+    error_reports_collection = None
 
 
 def track_download(
@@ -1560,3 +1562,256 @@ def generate_daily_report():
     except Exception as e:
         logger.error(f"❌ فشل توليد التقرير اليومي: {e}")
         return "❌ فشل توليد التقرير / Failed to generate report"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Audio Settings Management
+# ═══════════════════════════════════════════════════════════════
+
+def get_audio_settings():
+    """جلب إعدادات الصوت الحالية"""
+    try:
+        if settings_collection is None:
+            return None
+
+        settings = settings_collection.find_one({'_id': 'audio_settings'})
+
+        # إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+        if not settings:
+            default_settings = {
+                '_id': 'audio_settings',
+                'audio_enabled': True,
+                'audio_limit_minutes': 10.0,  # 10 دقائق للمستخدمين غير المشتركين
+                'last_updated': datetime.now()
+            }
+            settings_collection.insert_one(default_settings)
+            logger.info("✅ تم إنشاء إعدادات الصوت الافتراضية")
+            return default_settings
+
+        return settings
+    except Exception as e:
+        logger.error(f"❌ فشل جلب إعدادات الصوت: {e}")
+        return None
+
+
+def set_audio_enabled(enabled: bool):
+    """تفعيل أو إيقاف تحميل الصوتيات"""
+    try:
+        if settings_collection is None:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'audio_settings'},
+            {
+                '$set': {
+                    'audio_enabled': enabled,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        status = "مفعّل" if enabled else "معطّل"
+        logger.info(f"✅ تحميل الصوتيات تم {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حالة الصوتيات: {e}")
+        return False
+
+
+def set_audio_limit_minutes(minutes: float):
+    """تعيين حد التحميل للصوتيات بالدقائق (للمستخدمين غير المشتركين)"""
+    try:
+        if settings_collection is None:
+            return False
+
+        if minutes < 0:
+            logger.warning("⚠️ الحد الزمني لا يمكن أن يكون سالب، استخدام 0")
+            minutes = 0
+
+        settings_collection.update_one(
+            {'_id': 'audio_settings'},
+            {
+                '$set': {
+                    'audio_limit_minutes': float(minutes),
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        logger.info(f"✅ تم تعيين حد الصوتيات إلى: {minutes} دقيقة")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حد الصوتيات: {e}")
+        return False
+
+
+def is_audio_enabled():
+    """التحقق من حالة تحميل الصوتيات"""
+    try:
+        settings = get_audio_settings()
+        if not settings:
+            return True  # الافتراضي: مفعّل
+        return settings.get('audio_enabled', True)
+    except Exception as e:
+        logger.error(f"❌ فشل التحقق من حالة الصوتيات: {e}")
+        return True
+
+
+def get_audio_limit_minutes():
+    """جلب حد التحميل للصوتيات بالدقائق"""
+    try:
+        settings = get_audio_settings()
+        if not settings:
+            return 10.0  # الافتراضي: 10 دقائق
+        return settings.get('audio_limit_minutes', 10.0)
+    except Exception as e:
+        logger.error(f"❌ فشل جلب حد الصوتيات: {e}")
+        return 10.0
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Error Reporting System
+# ═══════════════════════════════════════════════════════════════
+
+def create_error_report(user_id: int, username: str, url: str, error_type: str, error_message: str):
+    """
+    إنشاء بلاغ خطأ جديد
+
+    Args:
+        user_id: معرف المستخدم
+        username: اسم المستخدم
+        url: رابط الفيديو الذي فشل
+        error_type: نوع الخطأ (مثل: TimedOut, NetworkError, etc.)
+        error_message: رسالة الخطأ التفصيلية
+    """
+    try:
+        if error_reports_collection is None:
+            logger.warning("⚠️ مجموعة البلاغات غير متاحة")
+            return None
+
+        report_data = {
+            'user_id': user_id,
+            'username': username,
+            'url': url,
+            'error_type': error_type,
+            'error_message': error_message,
+            'status': 'pending',  # pending, resolved
+            'created_at': datetime.now(),
+            'resolved_at': None,
+            'admin_note': None
+        }
+
+        result = error_reports_collection.insert_one(report_data)
+        logger.info(f"✅ تم إنشاء بلاغ خطأ: {result.inserted_id}")
+
+        return str(result.inserted_id)
+    except Exception as e:
+        logger.error(f"❌ فشل إنشاء بلاغ الخطأ: {e}")
+        return None
+
+
+def get_pending_error_reports(limit: int = 50):
+    """جلب البلاغات المعلقة (غير المحلولة)"""
+    try:
+        if error_reports_collection is None:
+            return []
+
+        reports = list(error_reports_collection.find(
+            {'status': 'pending'}
+        ).sort('created_at', -1).limit(limit))
+
+        return reports
+    except Exception as e:
+        logger.error(f"❌ فشل جلب البلاغات المعلقة: {e}")
+        return []
+
+
+def get_all_error_reports(limit: int = 100):
+    """جلب جميع البلاغات (معلقة ومحلولة)"""
+    try:
+        if error_reports_collection is None:
+            return []
+
+        reports = list(error_reports_collection.find().sort('created_at', -1).limit(limit))
+
+        return reports
+    except Exception as e:
+        logger.error(f"❌ فشل جلب البلاغات: {e}")
+        return []
+
+
+def resolve_error_report(report_id: str, admin_note: str = None):
+    """
+    تحديد بلاغ كـ "محلول"
+
+    Args:
+        report_id: معرف البلاغ
+        admin_note: ملاحظة اختيارية من المدير
+    """
+    try:
+        if error_reports_collection is None:
+            return False
+
+        from bson.objectid import ObjectId
+
+        update_data = {
+            'status': 'resolved',
+            'resolved_at': datetime.now()
+        }
+
+        if admin_note:
+            update_data['admin_note'] = admin_note
+
+        result = error_reports_collection.update_one(
+            {'_id': ObjectId(report_id)},
+            {'$set': update_data}
+        )
+
+        if result.modified_count > 0:
+            logger.info(f"✅ تم حل البلاغ: {report_id}")
+            return True
+        else:
+            logger.warning(f"⚠️ لم يتم العثور على البلاغ: {report_id}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ فشل حل البلاغ: {e}")
+        return False
+
+
+def get_error_report_by_id(report_id: str):
+    """جلب بلاغ محدد بواسطة المعرف"""
+    try:
+        if error_reports_collection is None:
+            return None
+
+        from bson.objectid import ObjectId
+
+        report = error_reports_collection.find_one({'_id': ObjectId(report_id)})
+
+        return report
+    except Exception as e:
+        logger.error(f"❌ فشل جلب البلاغ: {e}")
+        return None
+
+
+def delete_error_report(report_id: str):
+    """حذف بلاغ"""
+    try:
+        if error_reports_collection is None:
+            return False
+
+        from bson.objectid import ObjectId
+
+        result = error_reports_collection.delete_one({'_id': ObjectId(report_id)})
+
+        if result.deleted_count > 0:
+            logger.info(f"✅ تم حذف البلاغ: {report_id}")
+            return True
+        else:
+            logger.warning(f"⚠️ لم يتم العثور على البلاغ: {report_id}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ فشل حذف البلاغ: {e}")
+        return False
