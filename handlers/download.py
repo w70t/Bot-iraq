@@ -88,14 +88,15 @@ class DownloadProgressTracker:
         self.lang = lang
         self.last_update_time = 0
         self.last_percentage = -1
-        # اختيار اقتباس عشوائي
+        # اختيار اقتباس عشوائي في بداية كل تحميل
         self.quote = random.choice(ANIME_QUOTES)
+        logger.info(f"💬 تم اختيار حكمة عشوائية: {self.quote['ar'][:30]}...")
 
     def progress_hook(self, d):
         if d['status'] == 'downloading':
             try:
                 current_time = time.time()
-                # تحديث كل 1.5 ثانية بدلاً من 2 ثانية (أسرع)
+                # تحديث كل 1.5 ثانية (سلس وسريع)
                 if current_time - self.last_update_time < 1.5:
                     return
 
@@ -105,7 +106,7 @@ class DownloadProgressTracker:
                 if total > 0:
                     percentage = int((downloaded / total) * 100)
 
-                    # تحديث كل 3% بدلاً من 5% (أكثر سلاسة)
+                    # تحديث كل 3% (سلاسة أكثر)
                     if abs(percentage - self.last_percentage) < 3:
                         return
 
@@ -115,7 +116,7 @@ class DownloadProgressTracker:
                     speed = d.get('speed', 0)
                     downloaded_mb = downloaded / (1024 * 1024)
                     total_mb = total / (1024 * 1024)
-                    speed_text = f"{speed / 1024 / 1024:.2f} MB/s" if speed else "..."
+                    speed_text = f"{speed / 1024 / 1024:.2f} MB/s" if speed else "حساب..."
 
                     # حساب الوقت المتبقي
                     eta = d.get('eta', 0)
@@ -128,41 +129,57 @@ class DownloadProgressTracker:
 
                     progress_bar = self._create_progress_bar(percentage)
 
+                    # رموز تفاعلية حسب التقدم
                     if percentage < 25:
                         status_emoji = "📥"
+                        status_text = "بدء التحميل"
                     elif percentage < 50:
                         status_emoji = "⬇️"
+                        status_text = "جاري التحميل"
                     elif percentage < 75:
                         status_emoji = "⚡"
+                        status_text = "سرعة عالية"
                     elif percentage < 95:
                         status_emoji = "🔄"
+                        status_text = "جاري المعالجة"
                     else:
                         status_emoji = "✨"
+                        status_text = "على وشك الانتهاء"
 
+                    # تنسيق الرسالة مع الحكمة
                     update_text = (
-                        f"{status_emoji} **جاري التحميل...**\n\n"
+                        f"{status_emoji} **{status_text}...**\n\n"
                         f"{progress_bar}\n"
                         f"⚡ {speed_text} | ⏱️ ETA: {eta_text}\n"
                         f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n\n"
-                        f"💬 _{self.quote['ar']}_\n"
+                        f"💭 _{self.quote['ar']}_\n"
                         f"💬 _{self.quote['en']}_"
                     )
 
                     try:
-                        # تحديث نفس الرسالة
-                        asyncio.create_task(self.message.edit_text(update_text, parse_mode='Markdown'))
+                        # تحديث نفس الرسالة بشكل آمن
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._safe_update(update_text))
                     except Exception as e:
-                        # تجاهل أخطاء تحديث الرسالة (مثل message not modified)
-                        pass
+                        logger.debug(f"تحديث التقدم: {e}")
 
             except Exception as e:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
+
+    async def _safe_update(self, text):
+        """تحديث آمن للرسالة مع معالجة الأخطاء"""
+        try:
+            await self.message.edit_text(text, parse_mode='Markdown')
+        except Exception as e:
+            # تجاهل أخطاء "message not modified" و "message to edit not found"
+            if "message is not modified" not in str(e).lower() and "message to edit not found" not in str(e).lower():
+                logger.debug(f"خطأ في تحديث الرسالة: {e}")
 
     def _create_progress_bar(self, percentage):
         """إنشاء شريط تقدم متحرك مع أيقونات 💠"""
         filled = int(percentage / 5)
         empty = 20 - filled
-        bar = f"{'💠' * filled}{'⬜' * empty}"
+        bar = '💠' * filled + '⬜' * empty
         return f"`{bar}` **{percentage}%**"
 
 def get_platform_from_url(url: str) -> str:
@@ -212,6 +229,26 @@ def is_adult_content(url: str, title: str = "") -> bool:
             return True
     
     return False
+
+def safe_filename(title: str, max_length: int = 60) -> str:
+    """
+    تنظيف اسم الملف من الرموز الخطرة وتقصيره
+
+    Args:
+        title: عنوان الملف الأصلي
+        max_length: الحد الأقصى لطول الاسم (افتراضي 60 حرف)
+
+    Returns:
+        اسم ملف آمن ومقصر
+    """
+    # إزالة الرموز الخاصة والخطرة
+    safe_name = re.sub(r'[\\/*?:"<>|]', '', title)
+    # إزالة المسافات الزائدة
+    safe_name = ' '.join(safe_name.split())
+    # تقصير الاسم
+    if len(safe_name) > max_length:
+        safe_name = safe_name[:max_length].rsplit(' ', 1)[0]  # قطع عند آخر مسافة
+    return safe_name.strip()
 
 async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message, is_audio: bool = False):
     """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
@@ -437,18 +474,18 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     # إعدادات أساسية
     ydl_opts = {
         'format': format_choice,
-        'outtmpl': os.path.join(VIDEO_PATH, '%(title)s.%(ext)s'),
+        'outtmpl': os.path.join(VIDEO_PATH, '%(title).60s.%(ext)s'),  # تقصير تلقائي لـ 60 حرف
         'quiet': False,
         'no_warnings': False,
         'extract_flat': False,
         'ignoreerrors': False,
         'nocheckcertificate': True,
-        # تحسينات السرعة
-        'concurrent_fragment_downloads': 5,
-        'retries': 10,
-        'fragment_retries': 10,
-        'http_chunk_size': 10485760,
-        'buffersize': 1024 * 512,
+        # تحسينات السرعة العامة
+        'concurrent_fragment_downloads': 8,
+        'retries': 20,
+        'fragment_retries': 20,
+        'http_chunk_size': 10485760,  # 10MB
+        'buffersize': 1024 * 1024,  # 1MB
     }
 
     # دعم ملف cookies.txt إذا كان موجوداً
@@ -542,15 +579,20 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             }
         })
     
-    # إعدادات الصوت - محسّنة للسرعة 2-3x
+    # إعدادات الصوت - محسّنة للسرعة 10x ⚡
     if quality == 'audio':
         ydl_opts.update({
-            # زيادة السرعة للصوتيات
-            'concurrent_fragment_downloads': 8,  # زيادة من 5 إلى 8
-            'http_chunk_size': 5242880,  # 5MB chunks للصوتيات
-            'buffersize': 1024 * 1024,  # 1MB buffer
-            'retries': 15,
-            'fragment_retries': 15,
+            'format': 'bestaudio/best',  # أفضل جودة صوت متاحة
+            # تحسينات السرعة القصوى
+            'concurrent_fragment_downloads': 16,  # زيادة إلى 16 للتوازي الأعلى
+            'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunks (ضعف السرعة)
+            'buffersize': 4 * 1024 * 1024,  # 4MB buffer (أسرع معالجة)
+            'retries': 20,  # محاولات أكثر للاستقرار
+            'fragment_retries': 20,
+            # تحسينات إضافية
+            'external_downloader_args': ['-j', '8', '-x', '16', '-s', '16'],  # aria2c arguments للسرعة
+            'prefer_ffmpeg': True,  # استخدام ffmpeg للسرعة
+            'keepvideo': False,  # حذف الفيديو مباشرة بعد الاستخراج
         })
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
