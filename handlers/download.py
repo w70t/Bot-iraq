@@ -414,7 +414,7 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
     if quality_choice == 'audio':
         user_id = query.from_user.id
 
-        from database import is_audio_enabled, get_audio_limit_minutes, is_subscribed, is_admin
+        from database import is_audio_enabled, is_subscribed, is_admin, is_subscription_enabled, get_free_time_limit
 
         # التحقق من تفعيل الصوتيات
         if not is_audio_enabled():
@@ -424,13 +424,15 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
             )
             return
 
-        # التحقق من حد المدة (للمستخدمين غير المشتركين وغير المدراء)
-        if not is_subscribed(user_id) and not is_admin(user_id):
+        # التحقق من حد المدة (فقط إذا كان الاشتراك مفعلاً)
+        subscription_enabled = is_subscription_enabled()
+
+        if subscription_enabled and not is_subscribed(user_id) and not is_admin(user_id):
             duration_seconds = info_dict.get('duration', 0)
 
             if duration_seconds > 0:
                 duration_minutes = duration_seconds / 60
-                audio_limit_minutes = get_audio_limit_minutes()
+                audio_limit_minutes = get_free_time_limit()  # استخدام نفس الحد الزمني العام
 
                 # -1 يعني غير محدود، فلا نحتاج للتحقق
                 if audio_limit_minutes != -1 and duration_minutes > audio_limit_minutes:
@@ -513,7 +515,21 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             except Exception as e2:
                 logger.debug(f"Could not load Firefox cookies: {e2}")
 
-    # إذا فشل تحميل cookies من المتصفح، استخدم ملف cookies.txt
+                # محاولة تحميل ملفات cookies.txt خاصة بكل منصة
+                platform_cookies = None
+                if is_tiktok and os.path.exists('cookies/tiktok.txt'):
+                    platform_cookies = 'cookies/tiktok.txt'
+                elif is_facebook and os.path.exists('cookies/facebook.txt'):
+                    platform_cookies = 'cookies/facebook.txt'
+                elif is_instagram and os.path.exists('cookies/instagram.txt'):
+                    platform_cookies = 'cookies/instagram.txt'
+
+                if platform_cookies:
+                    ydl_opts['cookiefile'] = platform_cookies
+                    cookies_loaded = True
+                    logger.info(f"✅ Using platform-specific cookies from {platform_cookies}")
+
+    # إذا فشل تحميل cookies من المتصفح والملفات الخاصة، استخدم ملف cookies.txt العام
     if not cookies_loaded and os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
         logger.info("✅ Using cookies.txt for authentication")
@@ -672,6 +688,65 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
     # فحص حجم الملف
     file_size = os.path.getsize(file_path)
     file_size_mb = file_size / (1024 * 1024)
+
+    # ضغط الملفات الصوتية الكبيرة جداً (>50MB) تلقائياً إلى 128kbps
+    if is_audio and file_size_mb > 50:
+        try:
+            logger.info(f"🗜️ الملف كبير جداً ({file_size_mb:.1f}MB) - جاري الضغط إلى 128kbps...")
+
+            # تحديث رسالة المستخدم
+            if progress_message:
+                try:
+                    await progress_message.edit_text(
+                        f"🗜️ **جاري ضغط الملف...**\n\n"
+                        f"📦 الحجم الأصلي: {file_size_mb:.1f} MB\n"
+                        f"🎵 الجودة: 128 kbps\n\n"
+                        f"⏳ الرجاء الانتظار...",
+                        parse_mode='Markdown'
+                    )
+                except:
+                    pass
+
+            # مسار الملف المضغوط
+            compressed_path = file_path.replace(".mp3", "_compressed.mp3")
+
+            # ضغط الملف باستخدام FFmpeg
+            compress_cmd = [
+                'ffmpeg', '-i', file_path,
+                '-b:a', '128k',           # Bitrate 128kbps
+                '-ar', '44100',           # Sample rate 44.1kHz
+                '-ac', '2',               # Stereo
+                '-threads', '0',          # Multi-threading
+                '-preset', 'ultrafast',   # Fast encoding
+                compressed_path,
+                '-y'                      # Overwrite
+            ]
+
+            subprocess.run(compress_cmd, check=True, capture_output=True)
+
+            # التحقق من نجاح الضغط
+            if os.path.exists(compressed_path):
+                compressed_size = os.path.getsize(compressed_path)
+                compressed_size_mb = compressed_size / (1024 * 1024)
+                reduction = ((file_size - compressed_size) / file_size) * 100
+
+                logger.info(f"✅ تم الضغط بنجاح: {file_size_mb:.1f}MB → {compressed_size_mb:.1f}MB (تقليل {reduction:.1f}%)")
+
+                # حذف الملف الأصلي واستخدام المضغوط
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+
+                file_path = compressed_path
+                file_size = compressed_size
+                file_size_mb = compressed_size_mb
+            else:
+                logger.warning(f"⚠️ فشل الضغط - سيتم استخدام الملف الأصلي")
+
+        except Exception as e:
+            logger.error(f"❌ خطأ في ضغط الملف: {e}")
+            logger.info(f"ℹ️ سيتم استخدام الملف الأصلي")
 
     # استخدام sendDocument للملفات الكبيرة (>45MB لنكون في الجانب الآمن)
     use_document = file_size > (45 * 1024 * 1024)  # 45MB
