@@ -4,6 +4,7 @@ import time
 import requests
 import subprocess
 import re
+import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -54,40 +55,79 @@ VIDEO_PATH = 'videos'
 if not os.path.exists(VIDEO_PATH):
     os.makedirs(VIDEO_PATH)
 
+# ═══════════════════════════════════════════════════════════════
+#  Anime Quotes System (Arabic + English)
+# ═══════════════════════════════════════════════════════════════
+ANIME_QUOTES = [
+    {"ar": "الأحلام لا تتحقق من تلقاء نفسها، عليك أن تعمل من أجلها", "en": "Dreams don't work unless you do"},
+    {"ar": "لا تستسلم أبداً، حتى لو كانت الأمور صعبة", "en": "Never give up, even if things get tough"},
+    {"ar": "القوة الحقيقية تأتي من الداخل", "en": "True strength comes from within"},
+    {"ar": "الفشل مجرد فرصة للبدء من جديد بذكاء أكبر", "en": "Failure is just a chance to start again more intelligently"},
+    {"ar": "كن الشخص الذي تريد أن تكونه، لا ما يريده الآخرون", "en": "Be who you want to be, not what others want"},
+    {"ar": "الطريق إلى النجاح مليء بالتحديات، لكن المكافأة تستحق العناء", "en": "The road to success is full of challenges, but the reward is worth it"},
+    {"ar": "لا يمكنك تغيير الماضي، لكن يمكنك صنع المستقبل", "en": "You can't change the past, but you can create the future"},
+    {"ar": "الشجاعة ليست عدم الخوف، بل مواجهة الخوف", "en": "Courage is not the absence of fear, but facing it"},
+    {"ar": "أحياناً أصغر خطوة في الاتجاه الصحيح تكون أكبر خطوة في حياتك", "en": "Sometimes the smallest step in the right direction is the biggest step of your life"},
+    {"ar": "النجاح ليس النهاية، والفشل ليس القاتل: إنها الشجاعة للاستمرار هي المهمة", "en": "Success is not final, failure is not fatal: it's the courage to continue that counts"},
+    {"ar": "لا تنتظر الفرص، اصنعها بنفسك", "en": "Don't wait for opportunities, create them yourself"},
+    {"ar": "كل يوم هو فرصة جديدة لتصبح أفضل", "en": "Every day is a new opportunity to be better"},
+    {"ar": "الإيمان بالنفس هو أول سر من أسرار النجاح", "en": "Believing in yourself is the first secret to success"},
+    {"ar": "لا تقارن نفسك بالآخرين، قارن نفسك بمن كنت بالأمس", "en": "Don't compare yourself to others, compare yourself to who you were yesterday"},
+    {"ar": "العقبات هي تلك الأشياء المخيفة التي تراها عندما تبعد عينيك عن هدفك", "en": "Obstacles are those frightful things you see when you take your eyes off your goal"},
+    {"ar": "النجاح يتطلب المثابرة والعزيمة", "en": "Success requires perseverance and determination"},
+    {"ar": "الحياة قصيرة جداً، لا تضيعها في الأشياء السلبية", "en": "Life is too short to waste on negative things"},
+    {"ar": "التغيير يبدأ منك أنت", "en": "Change starts with you"},
+    {"ar": "لا شيء مستحيل مع الإرادة القوية", "en": "Nothing is impossible with strong will"},
+    {"ar": "أنت أقوى مما تعتقد", "en": "You are stronger than you think"}
+]
+
 class DownloadProgressTracker:
-    """تتبع تقدم التحميل مع عداد نسبة مئوية"""
+    """تتبع تقدم التحميل مع عداد نسبة مئوية + اقتباسات أنمي عشوائية"""
     def __init__(self, message, lang):
         self.message = message
         self.lang = lang
         self.last_update_time = 0
         self.last_percentage = -1
-        
+        # اختيار اقتباس عشوائي
+        self.quote = random.choice(ANIME_QUOTES)
+
     def progress_hook(self, d):
         if d['status'] == 'downloading':
             try:
                 current_time = time.time()
-                if current_time - self.last_update_time < 2:
+                # تحديث كل 1.5 ثانية بدلاً من 2 ثانية (أسرع)
+                if current_time - self.last_update_time < 1.5:
                     return
-                
+
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                
+
                 if total > 0:
                     percentage = int((downloaded / total) * 100)
-                    
-                    if abs(percentage - self.last_percentage) < 5:
+
+                    # تحديث كل 3% بدلاً من 5% (أكثر سلاسة)
+                    if abs(percentage - self.last_percentage) < 3:
                         return
-                    
+
                     self.last_percentage = percentage
                     self.last_update_time = current_time
-                    
+
                     speed = d.get('speed', 0)
                     downloaded_mb = downloaded / (1024 * 1024)
                     total_mb = total / (1024 * 1024)
                     speed_text = f"{speed / 1024 / 1024:.2f} MB/s" if speed else "..."
-                    
+
+                    # حساب الوقت المتبقي
+                    eta = d.get('eta', 0)
+                    if eta and eta > 0:
+                        eta_mins = eta // 60
+                        eta_secs = eta % 60
+                        eta_text = f"{int(eta_mins)}:{int(eta_secs):02d}"
+                    else:
+                        eta_text = "حساب..."
+
                     progress_bar = self._create_progress_bar(percentage)
-                    
+
                     if percentage < 25:
                         status_emoji = "📥"
                     elif percentage < 50:
@@ -98,30 +138,32 @@ class DownloadProgressTracker:
                         status_emoji = "🔄"
                     else:
                         status_emoji = "✨"
-                    
+
                     update_text = (
-                        f"{status_emoji} جاري التحميل...\n\n"
-                        f"{progress_bar}\n\n"
-                        f"📊 {percentage}%\n"
-                        f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n"
-                        f"⚡ {speed_text}"
+                        f"{status_emoji} **جاري التحميل...**\n\n"
+                        f"{progress_bar}\n"
+                        f"⚡ {speed_text} | ⏱️ ETA: {eta_text}\n"
+                        f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n\n"
+                        f"💬 _{self.quote['ar']}_\n"
+                        f"💬 _{self.quote['en']}_"
                     )
-                    
+
                     try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(self.message.edit_text(update_text))
+                        # تحديث نفس الرسالة
+                        asyncio.create_task(self.message.edit_text(update_text, parse_mode='Markdown'))
                     except Exception as e:
                         # تجاهل أخطاء تحديث الرسالة (مثل message not modified)
-                        logger.debug(f"تحديث التقدم تم تجاهله: {e}")
-                        
+                        pass
+
             except Exception as e:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
-    
+
     def _create_progress_bar(self, percentage):
+        """إنشاء شريط تقدم متحرك مع أيقونات 💠"""
         filled = int(percentage / 5)
         empty = 20 - filled
-        bar = f"{'🟩' * filled}{'⬜' * empty}"
-        return f"{bar} {percentage}%"
+        bar = f"{'💠' * filled}{'⬜' * empty}"
+        return f"`{bar}` **{percentage}%**"
 
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
@@ -171,8 +213,8 @@ def is_adult_content(url: str, title: str = "") -> bool:
     
     return False
 
-async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message):
-    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ"""
+async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message, is_audio: bool = False):
+    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
     if not LOG_CHANNEL_ID:
         return
 
@@ -186,11 +228,16 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     user_name = user.full_name
     username = f"@{user.username}" if user.username else "مجهول"
 
-    video_title = video_info.get('title', 'غير متوفر (No title)')
-    video_url = video_info.get('webpage_url', 'N/A')
+    media_title = video_info.get('title', 'غير متوفر (No title)')
+    media_url = video_info.get('webpage_url', 'N/A')
     duration = video_info.get('duration', 0)
     view_count = video_info.get('view_count', 0)
     like_count = video_info.get('like_count', 0)
+
+    # تحديد نوع الوسائط
+    media_type = "🎧 صوت" if is_audio else "🎥 فيديو"
+    media_emoji = "🎧" if is_audio else "🎥"
+    media_text = "صوت" if is_audio else "فيديو"
 
     # تنسيق عدد المشاهدات والإعجابات
     if view_count > 0:
@@ -238,7 +285,7 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
 
     try:
-        # 1) Forward الفيديو إلى قناة السجلات
+        # 1) Forward الوسائط (فيديو أو صوت) إلى قناة السجلات
         forwarded = await context.bot.forward_message(
             chat_id=log_channel_id,
             from_chat_id=update.effective_chat.id,
@@ -247,16 +294,17 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
 
         # 2) إرسال رسالة نصية منسقة قابلة للنسخ بالكامل
         info_text = (
-            "🎥 **فيديو جديد تم معالجته**\n"
-            f"👤 المستخدم: @{username} (ID: {user_id})\n"
-            f"🔗 الرابط: {video_url}\n"
-            f"🎞️ العنوان: {video_title}\n"
-            f"📊 المشاهدات: {views_text}\n"
-            f"💬 التفاعلات: {likes_text}\n"
-            f"⏱️ المدة: {duration_text}\n"
-            f"📦 الحجم: {size_text}\n"
-            f"📅 الوقت: {timestamp}\n"
-            f"🎬 **الفيديو مرفق أعلاه مباشرة.**"
+            f"{media_emoji} **{media_text} جديد تم معالجته**\n\n"
+            f"👤 **المستخدم:** {username} (ID: `{user_id}`)\n"
+            f"🔗 **الرابط:** {media_url}\n"
+            f"🎞️ **العنوان:** {media_title}\n"
+            f"📊 **المشاهدات:** {views_text}\n"
+            f"💬 **التفاعلات:** {likes_text}\n"
+            f"⏱️ **المدة:** {duration_text}\n"
+            f"📦 **الحجم:** {size_text}\n"
+            f"🎭 **النوع:** {media_type}\n"
+            f"📅 **الوقت:** {timestamp}\n\n"
+            f"✨ **الوسائط مرفقة أعلاه مباشرة.**"
         )
 
         # الانتظار ثانية واحدة قبل إرسال النص لضمان ترتيب الرسائل
@@ -269,10 +317,10 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
             disable_web_page_preview=True
         )
 
-        logger.info(f"✅ تم إرسال الفيديو ورسالة نصية قابلة للنسخ إلى قناة السجلات")
+        logger.info(f"✅ تم إرسال {media_text} ورسالة نصية قابلة للنسخ إلى قناة السجلات")
 
     except Exception as e:
-        log_warning(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}", module="handlers/download.py")
+        log_warning(f"❌ فشل إرسال {media_text} إلى قناة السجل: {e}", module="handlers/download.py")
 
 async def show_quality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, info_dict: dict):
     """عرض قائمة اختيار الجودة - مبسطة"""
@@ -343,7 +391,8 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
                 duration_minutes = duration_seconds / 60
                 audio_limit_minutes = get_audio_limit_minutes()
 
-                if duration_minutes > audio_limit_minutes:
+                # -1 يعني غير محدود، فلا نحتاج للتحقق
+                if audio_limit_minutes != -1 and duration_minutes > audio_limit_minutes:
                     keyboard = [[InlineKeyboardButton(
                         "⭐ اشترك في VIP للتحميل غير المحدود",
                         url="https://instagram.com/7kmmy"
@@ -493,8 +542,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             }
         })
     
-    # إعدادات الصوت
+    # إعدادات الصوت - محسّنة للسرعة 2-3x
     if quality == 'audio':
+        ydl_opts.update({
+            # زيادة السرعة للصوتيات
+            'concurrent_fragment_downloads': 8,  # زيادة من 5 إلى 8
+            'http_chunk_size': 5242880,  # 5MB chunks للصوتيات
+            'buffersize': 1024 * 1024,  # 1MB buffer
+            'retries': 15,
+            'fragment_retries': 15,
+        })
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -900,12 +957,14 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         
         with open(final_video_path, 'rb') as file:
             if is_audio:
-                await context.bot.send_audio(
+                sent_message = await context.bot.send_audio(
                     chat_id=update.effective_chat.id,
                     audio=file,
                     caption=caption_text[:1024],
-                    reply_to_message_id=update.effective_message.message_id
+                    reply_to_message_id=update.effective_message.message_id,
+                    duration=duration
                 )
+                logger.info(f"✅ تم تحميل الصوت بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
             else:
                 sent_message = await context.bot.send_video(
                     chat_id=update.effective_chat.id,
@@ -917,6 +976,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     height=info_dict.get('height'),
                     duration=duration
                 )
+                logger.info(f"✅ تم تحميل الفيديو بنجاح — {user_id} — {title[:30]} — {format_duration(duration)}")
 
                 # إرسال تقرير احترافي لقناة الفيديوهات - DISABLED to avoid duplicates
                 # Now using forward-only send_log_to_channel instead
@@ -951,7 +1011,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
                 )
         
-        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message)
+        await send_log_to_channel(context, update, user, info_dict, final_video_path, sent_message, is_audio)
         
         # تسجيل الإحصائيات - تحميل ناجح
         from database import record_download_attempt
