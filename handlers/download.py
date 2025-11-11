@@ -84,9 +84,10 @@ ANIME_QUOTES = [
 
 class DownloadProgressTracker:
     """تتبع تقدم التحميل مع عداد نسبة مئوية + اقتباسات أنمي عشوائية"""
-    def __init__(self, message, lang):
+    def __init__(self, message, lang, loop):
         self.message = message
         self.lang = lang
+        self.loop = loop  # حفظ الـ event loop للاستخدام من thread آخر
         self.last_update_time = 0
         self.last_percentage = -1
         # اختيار اقتباس عشوائي في بداية كل تحميل
@@ -108,7 +109,7 @@ class DownloadProgressTracker:
                     percentage = int((downloaded / total) * 100)
 
                     # تحديث كل 3% (سلاسة أكثر)
-                    if abs(percentage - self.last_percentage) < 3:
+                    if abs(percentage - self.last_percentage) < 3 and current_time - self.last_update_time < 3:
                         return
 
                     self.last_percentage = percentage
@@ -158,9 +159,11 @@ class DownloadProgressTracker:
                     )
 
                     try:
-                        # تحديث نفس الرسالة بشكل آمن
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(self._safe_update(update_text))
+                        # استخدام run_coroutine_threadsafe لأننا في thread مختلف
+                        asyncio.run_coroutine_threadsafe(
+                            self._safe_update(update_text),
+                            self.loop
+                        )
                     except Exception as e:
                         logger.debug(f"تحديث التقدم: {e}")
 
@@ -657,15 +660,39 @@ async def upload_to_server(file_path: str, user_id: int):
 async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, reply_to_message_id, duration, info_dict, max_retries=3):
     """
     محاولة إرسال الملف مع إعادة المحاولة في حالة TimedOut
-    يستخدم sendDocument للملفات الكبيرة (>48MB)
+    يستخدم sendDocument للملفات الكبيرة (>45MB)
     """
     # فحص حجم الملف
     file_size = os.path.getsize(file_path)
     file_size_mb = file_size / (1024 * 1024)
-    use_document = file_size > (48 * 1024 * 1024)  # 48MB
+
+    # استخدام sendDocument للملفات الكبيرة (>45MB لنكون في الجانب الآمن)
+    use_document = file_size > (45 * 1024 * 1024)  # 45MB
+
+    # تحديد timeouts حسب حجم الملف
+    if use_document or file_size_mb > 40:
+        # ملفات كبيرة جداً
+        read_timeout = 900   # 15 دقيقة
+        write_timeout = 900  # 15 دقيقة
+        connect_timeout = 180
+        pool_timeout = 180
+    elif file_size_mb > 20:
+        # ملفات متوسطة-كبيرة
+        read_timeout = 600   # 10 دقائق
+        write_timeout = 600
+        connect_timeout = 120
+        pool_timeout = 120
+    else:
+        # ملفات عادية
+        read_timeout = 300   # 5 دقائق
+        write_timeout = 300
+        connect_timeout = 60
+        pool_timeout = 60
 
     if use_document:
         logger.info(f"📦 الملف كبير ({file_size_mb:.1f}MB) - سيتم استخدام sendDocument بدلاً من send_audio/video")
+    elif file_size_mb > 20:
+        logger.info(f"⚠️ الملف كبير ({file_size_mb:.1f}MB) - استخدام timeouts ممتدة")
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -679,10 +706,10 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
                         document=file,
                         caption=caption[:1024],
                         reply_to_message_id=reply_to_message_id,
-                        read_timeout=600,  # 10 دقائق للملفات الكبيرة
-                        write_timeout=600,  # 10 دقائق
-                        connect_timeout=120,
-                        pool_timeout=120
+                        read_timeout=read_timeout,
+                        write_timeout=write_timeout,
+                        connect_timeout=connect_timeout,
+                        pool_timeout=pool_timeout
                     )
                     logger.info(f"✅ تم رفع الملف كمستند ({file_size_mb:.1f}MB)")
                 elif is_audio:
@@ -692,10 +719,10 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
                         caption=caption[:1024],
                         reply_to_message_id=reply_to_message_id,
                         duration=duration,
-                        read_timeout=300,  # 5 دقائق
-                        write_timeout=300,  # 5 دقائق
-                        connect_timeout=60,
-                        pool_timeout=60
+                        read_timeout=read_timeout,
+                        write_timeout=write_timeout,
+                        connect_timeout=connect_timeout,
+                        pool_timeout=pool_timeout
                     )
                 else:
                     sent_message = await context.bot.send_video(
@@ -707,10 +734,10 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
                         width=info_dict.get('width'),
                         height=info_dict.get('height'),
                         duration=duration,
-                        read_timeout=300,
-                        write_timeout=300,
-                        connect_timeout=60,
-                        pool_timeout=60
+                        read_timeout=read_timeout,
+                        write_timeout=write_timeout,
+                        connect_timeout=connect_timeout,
+                        pool_timeout=pool_timeout
                     )
 
                 logger.info(f"✅ تم الرفع بنجاح في المحاولة {attempt}")
@@ -931,7 +958,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         # إذا كان فيديو عادي - الكود القديم
         loop = asyncio.get_event_loop()
 
-        progress_tracker = DownloadProgressTracker(processing_message, lang)
+        progress_tracker = DownloadProgressTracker(processing_message, lang, loop)
         ydl_opts['progress_hooks'] = [progress_tracker.progress_hook]
 
         try:
