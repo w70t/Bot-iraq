@@ -10,7 +10,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from cryptography.fernet import Fernet
+# Lazy import for cryptography - will be imported when needed
 import yt_dlp
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -56,6 +56,9 @@ class CookieManager:
     def _load_or_create_key(self):
         """Load or generate AES-256 encryption key"""
         try:
+            # Import Fernet here to avoid import errors before cryptography is installed
+            from cryptography.fernet import Fernet
+
             if COOKIE_KEY_FILE.exists():
                 with open(COOKIE_KEY_FILE, 'r') as f:
                     key_data = json.load(f)
@@ -74,6 +77,10 @@ class CookieManager:
                 logger.info("🔐 Generated new encryption key")
 
             self.fernet = Fernet(key)
+        except ImportError as e:
+            logger.error(f"❌ cryptography module not installed: {e}")
+            logger.error("Please install: pip install cryptography>=42.0.0")
+            raise
         except Exception as e:
             logger.error(f"❌ Failed to load/create encryption key: {e}")
             raise
