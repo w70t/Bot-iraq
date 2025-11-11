@@ -49,7 +49,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
-FREE_USER_DOWNLOAD_LIMIT = 5
 VIDEO_PATH = 'videos'
 
 if not os.path.exists(VIDEO_PATH):
@@ -146,14 +145,14 @@ class DownloadProgressTracker:
                         status_emoji = "✨"
                         status_text = "على وشك الانتهاء"
 
-                    # تنسيق الرسالة مع الحكمة
+                    # تنسيق الرسالة مع الحكمة (بدون Markdown للحكمة لتجنب أخطاء التنسيق)
                     update_text = (
                         f"{status_emoji} **{status_text}...**\n\n"
                         f"{progress_bar}\n"
                         f"⚡ {speed_text} | ⏱️ ETA: {eta_text}\n"
                         f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n\n"
-                        f"💭 _{self.quote['ar']}_\n"
-                        f"💬 _{self.quote['en']}_"
+                        f"💭 {self.quote['ar']}\n"
+                        f"💬 {self.quote['en']}"
                     )
 
                     try:
@@ -770,8 +769,10 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             
             # تحديث عداد التحميلات
             if not is_user_admin and not is_subscribed_user:
+                from database import get_daily_download_limit_setting
                 increment_download_count(user_id)
-                remaining = FREE_USER_DOWNLOAD_LIMIT - get_daily_download_count(user_id)
+                daily_limit = get_daily_download_limit_setting()
+                remaining = daily_limit - get_daily_download_count(user_id)
                 if remaining > 0:
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
@@ -1045,8 +1046,10 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             logger.debug(f"فشل حذف رسالة المعالجة: {e}")
         
         if not is_user_admin and not is_subscribed_user:
+            from database import get_daily_download_limit_setting
             increment_download_count(user_id)
-            remaining = FREE_USER_DOWNLOAD_LIMIT - get_daily_download_count(user_id)
+            daily_limit = get_daily_download_limit_setting()
+            remaining = daily_limit - get_daily_download_count(user_id)
             if remaining > 0:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
@@ -1207,20 +1210,26 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_adult_content(url):
         await update.message.reply_text("🚫 محتوى محظور! هذا الموقع محظور.")
         return
-    
-    if not is_user_admin and not is_subscribed_user:
+
+    # التحقق من الحد اليومي (فقط إذا كان الاشتراك مفعلاً)
+    from database import is_subscription_enabled, get_daily_download_limit_setting
+    subscription_enabled = is_subscription_enabled()
+
+    if subscription_enabled and not is_user_admin and not is_subscribed_user:
         daily_count = get_daily_download_count(user_id)
-        if daily_count >= FREE_USER_DOWNLOAD_LIMIT:
+        daily_limit = get_daily_download_limit_setting()  # جلب الحد من قاعدة البيانات
+        if daily_count >= daily_limit:
             keyboard = [[InlineKeyboardButton(
                 "⭐ اشترك الآن",
                 url="https://instagram.com/7kmmy"
             )]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                "🚫 وصلت للحد اليومي (5 فيديوهات). اشترك للتحميل بلا حدود!",
+                f"🚫 وصلت للحد اليومي ({daily_limit} تحميلات). اشترك للتحميل بلا حدود!",
                 reply_markup=reply_markup
             )
             return
+    # إذا كان الاشتراك معطلاً، السماح بالتحميل بدون قيود
     
     processing_message = await update.message.reply_text("🔍 جاري التحليل...")
     
@@ -1240,19 +1249,27 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_adult_content(url, title):
             await processing_message.edit_text("🚫 محتوى محظور!")
             return
-        
-        max_free_duration = config.get("MAX_FREE_DURATION", 600)
-        if not is_user_admin and not is_subscribed_user and duration and duration > max_free_duration:
-            keyboard = [[InlineKeyboardButton(
-                "⭐ اشترك الآن",
-                url="https://instagram.com/7kmmy"
-            )]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await processing_message.edit_text(
-                f"⏰ الفيديو طويل! (أكثر من {max_free_duration // 60} دقائق). اشترك لتحميل فيديوهات طويلة!",
-                reply_markup=reply_markup
-            )
-            return
+
+        # التحقق من القيود الزمنية (فقط إذا كان الاشتراك مفعلاً)
+        from database import is_subscription_enabled, get_free_time_limit
+        subscription_enabled = is_subscription_enabled()
+
+        if subscription_enabled:
+            # الاشتراك مفعل - تطبيق القيود على غير المشتركين
+            free_time_limit = get_free_time_limit()  # جلب الحد من قاعدة البيانات (بالدقائق)
+            max_free_duration = free_time_limit * 60  # تحويل إلى ثواني
+            if not is_user_admin and not is_subscribed_user and duration and duration > max_free_duration:
+                keyboard = [[InlineKeyboardButton(
+                    "⭐ اشترك الآن",
+                    url="https://instagram.com/7kmmy"
+                )]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await processing_message.edit_text(
+                    f"⏰ الفيديو طويل! (أكثر من {free_time_limit} دقائق). اشترك لتحميل فيديوهات طويلة!",
+                    reply_markup=reply_markup
+                )
+                return
+        # إذا كان الاشتراك معطلاً، السماح بالتحميل بدون قيود
         
         await processing_message.delete()
         
