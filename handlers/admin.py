@@ -1689,12 +1689,18 @@ async def show_audio_settings_panel(update: Update, context: ContextTypes.DEFAUL
 
     status_text = "✅ مفعّل" if audio_enabled else "❌ معطّل"
 
+    # عرض الحد الحالي
+    if audio_limit == -1:
+        limit_text = "♾️ غير محدود"
+    else:
+        limit_text = f"{audio_limit} دقيقة"
+
     message_text = (
         "🎧 **إعدادات تحميل الصوتيات**\n\n"
         f"📊 **الإعدادات الحالية:**\n"
         f"• الحالة العامة: {status_text}\n"
-        f"• الحد الأقصى لغير المشتركين: {audio_limit} دقيقة\n"
-        f"• للمشتركين VIP: ♾️ غير محدود\n\n"
+        f"• الحد الأقصى لغير المشتركين: {limit_text}\n"
+        f"• للمشتركين VIP: ♾️ دائماً غير محدود\n\n"
         f"💡 **ملاحظات:**\n"
         f"• إذا كان المقطع الصوتي أطول من الحد المسموح، سيُمنع التحميل\n"
         f"• المشتركون VIP يمكنهم تحميل صوتيات بلا حدود\n\n"
@@ -1704,7 +1710,15 @@ async def show_audio_settings_panel(update: Update, context: ContextTypes.DEFAUL
     keyboard = [
         [InlineKeyboardButton("✅ تفعيل تحميل الصوتيات", callback_data="audio_enable")],
         [InlineKeyboardButton("❌ إيقاف تحميل الصوتيات", callback_data="audio_disable")],
-        [InlineKeyboardButton("⏱️ تعيين حد زمني مخصص", callback_data="audio_set_custom_limit")],
+        [
+            InlineKeyboardButton("3️⃣ 3 دقائق", callback_data="audio_preset_3"),
+            InlineKeyboardButton("5️⃣ 5 دقائق", callback_data="audio_preset_5")
+        ],
+        [
+            InlineKeyboardButton("🔟 10 دقائق", callback_data="audio_preset_10"),
+            InlineKeyboardButton("♾️ غير محدود", callback_data="audio_preset_unlimited")
+        ],
+        [InlineKeyboardButton("⏱️ حد مخصص", callback_data="audio_set_custom_limit")],
         [InlineKeyboardButton("↩️ العودة للقائمة الرئيسية", callback_data="admin_back")]
     ]
 
@@ -1752,6 +1766,33 @@ async def handle_audio_disable(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ تم إيقاف تحميل الصوتيات!", show_alert=True)
     else:
         await query.answer("❌ فشل إيقاف تحميل الصوتيات!", show_alert=True)
+
+    return await show_audio_settings_panel(update, context)
+
+
+async def handle_audio_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالج اختيار الحد الزمني المحدد مسبقاً"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import set_audio_limit_minutes
+
+    # استخراج القيمة من callback_data
+    preset = query.data.replace("audio_preset_", "")
+
+    if preset == "unlimited":
+        limit = -1
+        limit_text = "♾️ غير محدود"
+    else:
+        limit = float(preset)
+        limit_text = f"{limit} دقيقة"
+
+    success = set_audio_limit_minutes(limit)
+
+    if success:
+        await query.answer(f"✅ تم تعيين الحد إلى {limit_text}!", show_alert=True)
+    else:
+        await query.answer("❌ فشل تحديث الحد الزمني!", show_alert=True)
 
     return await show_audio_settings_panel(update, context)
 
@@ -2259,6 +2300,7 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_audio_settings_panel, pattern='^admin_audio_settings$'),
             CallbackQueryHandler(handle_audio_enable, pattern='^audio_enable$'),
             CallbackQueryHandler(handle_audio_disable, pattern='^audio_disable$'),
+            CallbackQueryHandler(handle_audio_preset, pattern='^audio_preset_'),
             CallbackQueryHandler(handle_audio_set_custom_limit, pattern='^audio_set_custom_limit$'),
             # Error Reports
             CallbackQueryHandler(show_error_reports_panel, pattern='^admin_error_reports$'),

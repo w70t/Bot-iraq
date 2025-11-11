@@ -1620,12 +1620,18 @@ def set_audio_enabled(enabled: bool):
 
 
 def set_audio_limit_minutes(minutes: float):
-    """تعيين حد التحميل للصوتيات بالدقائق (للمستخدمين غير المشتركين)"""
+    """تعيين حد التحميل للصوتيات بالدقائق (للمستخدمين غير المشتركين)
+
+    استخدم -1 للتحميل غير المحدود
+    """
     try:
         if settings_collection is None:
             return False
 
-        if minutes < 0:
+        # -1 يعني غير محدود
+        if minutes == -1:
+            logger.info("✅ تم تعيين التحميل إلى غير محدود")
+        elif minutes < 0:
             logger.warning("⚠️ الحد الزمني لا يمكن أن يكون سالب، استخدام 0")
             minutes = 0
 
@@ -1640,7 +1646,10 @@ def set_audio_limit_minutes(minutes: float):
             upsert=True
         )
 
-        logger.info(f"✅ تم تعيين حد الصوتيات إلى: {minutes} دقيقة")
+        if minutes == -1:
+            logger.info(f"✅ تم تعيين حد الصوتيات إلى: غير محدود")
+        else:
+            logger.info(f"✅ تم تعيين حد الصوتيات إلى: {minutes} دقيقة")
         return True
     except Exception as e:
         logger.error(f"❌ فشل تحديث حد الصوتيات: {e}")

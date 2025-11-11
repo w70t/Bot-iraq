@@ -54,40 +54,79 @@ VIDEO_PATH = 'videos'
 if not os.path.exists(VIDEO_PATH):
     os.makedirs(VIDEO_PATH)
 
+# ═══════════════════════════════════════════════════════════════
+#  Anime Quotes System (Arabic + English)
+# ═══════════════════════════════════════════════════════════════
+ANIME_QUOTES = [
+    {"ar": "الأحلام لا تتحقق من تلقاء نفسها، عليك أن تعمل من أجلها", "en": "Dreams don't work unless you do"},
+    {"ar": "لا تستسلم أبداً، حتى لو كانت الأمور صعبة", "en": "Never give up, even if things get tough"},
+    {"ar": "القوة الحقيقية تأتي من الداخل", "en": "True strength comes from within"},
+    {"ar": "الفشل مجرد فرصة للبدء من جديد بذكاء أكبر", "en": "Failure is just a chance to start again more intelligently"},
+    {"ar": "كن الشخص الذي تريد أن تكونه، لا ما يريده الآخرون", "en": "Be who you want to be, not what others want"},
+    {"ar": "الطريق إلى النجاح مليء بالتحديات، لكن المكافأة تستحق العناء", "en": "The road to success is full of challenges, but the reward is worth it"},
+    {"ar": "لا يمكنك تغيير الماضي، لكن يمكنك صنع المستقبل", "en": "You can't change the past, but you can create the future"},
+    {"ar": "الشجاعة ليست عدم الخوف، بل مواجهة الخوف", "en": "Courage is not the absence of fear, but facing it"},
+    {"ar": "أحياناً أصغر خطوة في الاتجاه الصحيح تكون أكبر خطوة في حياتك", "en": "Sometimes the smallest step in the right direction is the biggest step of your life"},
+    {"ar": "النجاح ليس النهاية، والفشل ليس القاتل: إنها الشجاعة للاستمرار هي المهمة", "en": "Success is not final, failure is not fatal: it's the courage to continue that counts"},
+    {"ar": "لا تنتظر الفرص، اصنعها بنفسك", "en": "Don't wait for opportunities, create them yourself"},
+    {"ar": "كل يوم هو فرصة جديدة لتصبح أفضل", "en": "Every day is a new opportunity to be better"},
+    {"ar": "الإيمان بالنفس هو أول سر من أسرار النجاح", "en": "Believing in yourself is the first secret to success"},
+    {"ar": "لا تقارن نفسك بالآخرين، قارن نفسك بمن كنت بالأمس", "en": "Don't compare yourself to others, compare yourself to who you were yesterday"},
+    {"ar": "العقبات هي تلك الأشياء المخيفة التي تراها عندما تبعد عينيك عن هدفك", "en": "Obstacles are those frightful things you see when you take your eyes off your goal"},
+    {"ar": "النجاح يتطلب المثابرة والعزيمة", "en": "Success requires perseverance and determination"},
+    {"ar": "الحياة قصيرة جداً، لا تضيعها في الأشياء السلبية", "en": "Life is too short to waste on negative things"},
+    {"ar": "التغيير يبدأ منك أنت", "en": "Change starts with you"},
+    {"ar": "لا شيء مستحيل مع الإرادة القوية", "en": "Nothing is impossible with strong will"},
+    {"ar": "أنت أقوى مما تعتقد", "en": "You are stronger than you think"}
+]
+
 class DownloadProgressTracker:
-    """تتبع تقدم التحميل مع عداد نسبة مئوية"""
+    """تتبع تقدم التحميل مع عداد نسبة مئوية + اقتباسات أنمي عشوائية"""
     def __init__(self, message, lang):
         self.message = message
         self.lang = lang
         self.last_update_time = 0
         self.last_percentage = -1
-        
+        # اختيار اقتباس عشوائي
+        self.quote = random.choice(ANIME_QUOTES)
+
     def progress_hook(self, d):
         if d['status'] == 'downloading':
             try:
                 current_time = time.time()
-                if current_time - self.last_update_time < 2:
+                # تحديث كل 1.5 ثانية بدلاً من 2 ثانية (أسرع)
+                if current_time - self.last_update_time < 1.5:
                     return
-                
+
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-                
+
                 if total > 0:
                     percentage = int((downloaded / total) * 100)
-                    
-                    if abs(percentage - self.last_percentage) < 5:
+
+                    # تحديث كل 3% بدلاً من 5% (أكثر سلاسة)
+                    if abs(percentage - self.last_percentage) < 3:
                         return
-                    
+
                     self.last_percentage = percentage
                     self.last_update_time = current_time
-                    
+
                     speed = d.get('speed', 0)
                     downloaded_mb = downloaded / (1024 * 1024)
                     total_mb = total / (1024 * 1024)
                     speed_text = f"{speed / 1024 / 1024:.2f} MB/s" if speed else "..."
-                    
+
+                    # حساب الوقت المتبقي
+                    eta = d.get('eta', 0)
+                    if eta and eta > 0:
+                        eta_mins = eta // 60
+                        eta_secs = eta % 60
+                        eta_text = f"{int(eta_mins)}:{int(eta_secs):02d}"
+                    else:
+                        eta_text = "حساب..."
+
                     progress_bar = self._create_progress_bar(percentage)
-                    
+
                     if percentage < 25:
                         status_emoji = "📥"
                     elif percentage < 50:
@@ -98,30 +137,34 @@ class DownloadProgressTracker:
                         status_emoji = "🔄"
                     else:
                         status_emoji = "✨"
-                    
+
                     update_text = (
-                        f"{status_emoji} جاري التحميل...\n\n"
+                        f"{status_emoji} **جاري التحميل...**\n\n"
                         f"{progress_bar}\n\n"
-                        f"📊 {percentage}%\n"
-                        f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n"
-                        f"⚡ {speed_text}"
+                        f"📊 **التقدم:** {percentage}%\n"
+                        f"📦 **الحجم:** {downloaded_mb:.1f} / {total_mb:.1f} MB\n"
+                        f"⚡ **السرعة:** {speed_text}\n"
+                        f"⏱️ **المتبقي:** {eta_text}\n\n"
+                        f"💬 **{self.quote['ar']}**\n"
+                        f"_{self.quote['en']}_"
                     )
-                    
+
                     try:
                         loop = asyncio.get_event_loop()
-                        loop.create_task(self.message.edit_text(update_text))
+                        loop.create_task(self.message.edit_text(update_text, parse_mode='Markdown'))
                     except Exception as e:
                         # تجاهل أخطاء تحديث الرسالة (مثل message not modified)
                         logger.debug(f"تحديث التقدم تم تجاهله: {e}")
-                        
+
             except Exception as e:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
-    
+
     def _create_progress_bar(self, percentage):
+        """إنشاء شريط تقدم متحرك مع أيقونات 💠"""
         filled = int(percentage / 5)
         empty = 20 - filled
-        bar = f"{'🟩' * filled}{'⬜' * empty}"
-        return f"{bar} {percentage}%"
+        bar = f"{'💠' * filled}{'⬜' * empty}"
+        return f"`{bar}` **{percentage}%**"
 
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
@@ -343,7 +386,8 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
                 duration_minutes = duration_seconds / 60
                 audio_limit_minutes = get_audio_limit_minutes()
 
-                if duration_minutes > audio_limit_minutes:
+                # -1 يعني غير محدود، فلا نحتاج للتحقق
+                if audio_limit_minutes != -1 and duration_minutes > audio_limit_minutes:
                     keyboard = [[InlineKeyboardButton(
                         "⭐ اشترك في VIP للتحميل غير المحدود",
                         url="https://instagram.com/7kmmy"
@@ -493,8 +537,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             }
         })
     
-    # إعدادات الصوت
+    # إعدادات الصوت - محسّنة للسرعة 2-3x
     if quality == 'audio':
+        ydl_opts.update({
+            # زيادة السرعة للصوتيات
+            'concurrent_fragment_downloads': 8,  # زيادة من 5 إلى 8
+            'http_chunk_size': 5242880,  # 5MB chunks للصوتيات
+            'buffersize': 1024 * 1024,  # 1MB buffer
+            'retries': 15,
+            'fragment_retries': 15,
+        })
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
