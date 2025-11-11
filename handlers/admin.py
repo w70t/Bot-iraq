@@ -2634,7 +2634,7 @@ async def handle_upload_cookie_button(update: Update, context: ContextTypes.DEFA
 
 
 async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة رفع الكوكيز للمنصة المحددة (V5.1)"""
+    """معالجة رفع الكوكيز للمنصة المحددة (V5.2 - Auto Parse & Extract)"""
     platform = context.user_data.get('cookie_upload_platform')
 
     if not platform:
@@ -2643,7 +2643,6 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
 
     try:
         from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
-        import tempfile
 
         # Get the actual cookie file name (handles linking)
         cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower(), platform.lower())
@@ -2668,50 +2667,90 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
             await status_msg.edit_text("❌ يرجى إرسال ملف كوكيز أو لصق محتوى الملف")
             return AWAITING_PLATFORM_COOKIE
 
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_file:
-            tmp_file.write(cookie_data)
-            tmp_path = tmp_file.name
+        # Parse and validate Netscape cookies (V5.2)
+        await status_msg.edit_text("🔍 جاري تحليل الكوكيز...")
 
-        try:
-            # Encrypt the cookie file
-            success = cookie_manager.encrypt_cookie_file(tmp_path, cookie_file)
+        success, parsed_data, detected_platform, cookie_count = cookie_manager.parse_netscape_cookies(cookie_data)
 
-            if success:
-                await status_msg.edit_text(f"🔐 تم تشفير الكوكيز بنجاح\n⏳ جاري التحقق من الصلاحية...")
+        if not success or not parsed_data:
+            await status_msg.edit_text(
+                f"❌ فشل تحليل الكوكيز\n\n"
+                f"تأكد من:\n"
+                f"• التنسيق: Netscape HTTP Cookie File\n"
+                f"• الكوكيز غير منتهية الصلاحية\n"
+                f"• وجود cookies صالحة في النص\n\n"
+                f"💡 استخدم إضافة Cookie-Editor لتصدير الكوكيز"
+            )
+            context.user_data.pop('cookie_upload_platform', None)
+            return MAIN_MENU
 
-                # Validate cookies
-                is_valid = await cookie_manager.validate_cookies(cookie_file)
-
-                if is_valid:
-                    linked_info = ""
-                    if cookie_file != platform.lower():
-                        linked_info = f"\n🔗 مرتبط بـ: {cookie_file.capitalize()}"
-
-                    await status_msg.edit_text(
-                        f"✅ **تم رفع كوكيز {platform.capitalize()} بنجاح!**\n\n"
-                        f"🔐 تم التشفير بـ AES-256\n"
-                        f"✅ تم التحقق من الصلاحية{linked_info}\n\n"
-                        f"يمكنك الآن استخدام روابط {platform.capitalize()}"
-                    )
-                else:
-                    await status_msg.edit_text(
-                        f"⚠️ **تم رفع الكوكيز ولكن فشل التحقق**\n\n"
-                        f"🔐 تم التشفير والحفظ\n"
-                        f"❌ قد تكون الكوكيز منتهية الصلاحية\n\n"
-                        f"جرّب تصدير كوكيز جديدة من المتصفح"
-                    )
-            else:
+        # Verify detected platform matches selected platform
+        platform_match = ""
+        if detected_platform:
+            # Check if detected platform uses same cookie file
+            detected_cookie_file = PLATFORM_COOKIE_LINKS.get(detected_platform.lower())
+            if detected_cookie_file and detected_cookie_file != cookie_file:
                 await status_msg.edit_text(
-                    f"❌ فشل تشفير الكوكيز\n"
-                    f"تأكد من تنسيق الملف (Netscape format)"
+                    f"⚠️ **تحذير: تعارض في المنصة**\n\n"
+                    f"المنصة المحددة: {platform.capitalize()}\n"
+                    f"المنصة المكتشفة: {detected_platform.capitalize()}\n\n"
+                    f"الكوكيز تبدو أنها من {detected_platform.capitalize()}\n"
+                    f"لكنك اخترت {platform.capitalize()}\n\n"
+                    f"❌ الرجاء اختيار المنصة الصحيحة"
                 )
+                context.user_data.pop('cookie_upload_platform', None)
+                return MAIN_MENU
 
-        finally:
-            # Clean up temp file
-            import os
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            platform_match = f" ({detected_platform.capitalize()})"
+
+        # Encrypt the parsed cookies
+        await status_msg.edit_text(
+            f"✅ تم تحليل {cookie_count} كوكيز{platform_match}\n"
+            f"🔐 جاري التشفير..."
+        )
+
+        # Convert to bytes and encrypt
+        cookie_bytes = parsed_data.encode('utf-8')
+        encrypt_success = cookie_manager.encrypt_cookie_file(cookie_file, cookie_bytes)
+
+        if not encrypt_success:
+            await status_msg.edit_text(
+                f"❌ فشل تشفير الكوكيز\n"
+                f"حدث خطأ أثناء عملية التشفير"
+            )
+            context.user_data.pop('cookie_upload_platform', None)
+            return MAIN_MENU
+
+        # Validate cookies
+        await status_msg.edit_text(
+            f"🔐 تم التشفير بنجاح\n"
+            f"⏳ جاري التحقق من الصلاحية..."
+        )
+
+        is_valid = await cookie_manager.validate_cookies(cookie_file)
+
+        if is_valid:
+            linked_info = ""
+            if cookie_file != platform.lower():
+                linked_info = f"\n🔗 مرتبط بـ: {cookie_file.capitalize()}"
+
+            await status_msg.edit_text(
+                f"✅ **تم رفع كوكيز {platform.capitalize()} بنجاح!**\n\n"
+                f"📊 عدد الكوكيز: {cookie_count}\n"
+                f"🔐 التشفير: AES-256\n"
+                f"✅ الحالة: صالح ومُفعّل{linked_info}\n\n"
+                f"🎯 يمكنك الآن استخدام روابط {platform.capitalize()}",
+                parse_mode='Markdown'
+            )
+        else:
+            await status_msg.edit_text(
+                f"⚠️ **تم رفع الكوكيز ولكن فشل التحقق**\n\n"
+                f"📊 عدد الكوكيز: {cookie_count}\n"
+                f"🔐 تم التشفير والحفظ\n"
+                f"❌ قد تكون الكوكيز منتهية الصلاحية\n\n"
+                f"جرّب تصدير كوكيز جديدة من المتصفح",
+                parse_mode='Markdown'
+            )
 
         # Clear user data
         context.user_data.pop('cookie_upload_platform', None)
