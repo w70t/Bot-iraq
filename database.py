@@ -1681,6 +1681,115 @@ def get_audio_limit_minutes():
 
 
 # ═══════════════════════════════════════════════════════════════
+#  General Limits Settings (Free Users)
+# ═══════════════════════════════════════════════════════════════
+
+def get_general_limits():
+    """جلب الإعدادات العامة للقيود"""
+    try:
+        if settings_collection is None:
+            return None
+
+        settings = settings_collection.find_one({'_id': 'general_limits'})
+
+        if not settings:
+            default_settings = {
+                '_id': 'general_limits',
+                'free_time_limit': 5,  # 5 دقائق للمستخدمين غير المشتركين
+                'daily_download_limit': 3,  # 3 تحميلات يومية
+                'last_updated': datetime.now()
+            }
+            settings_collection.insert_one(default_settings)
+            logger.info("✅ تم إنشاء إعدادات القيود العامة الافتراضية")
+            return default_settings
+
+        return settings
+    except Exception as e:
+        logger.error(f"❌ فشل جلب الإعدادات العامة: {e}")
+        return None
+
+
+def set_free_time_limit(minutes: int):
+    """تعيين الحد الزمني للفيديوهات للمستخدمين غير المشتركين (بالدقائق)"""
+    try:
+        if settings_collection is None:
+            return False
+
+        if minutes < 0:
+            logger.warning("⚠️ الحد الزمني لا يمكن أن يكون سالب، استخدام 0")
+            minutes = 0
+
+        settings_collection.update_one(
+            {'_id': 'general_limits'},
+            {
+                '$set': {
+                    'free_time_limit': int(minutes),
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        logger.info(f"✅ تم تعيين الحد الزمني لغير المشتركين إلى: {minutes} دقيقة")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث الحد الزمني: {e}")
+        return False
+
+
+def get_free_time_limit():
+    """جلب الحد الزمني للفيديوهات للمستخدمين غير المشتركين"""
+    try:
+        settings = get_general_limits()
+        if not settings:
+            return 5  # الافتراضي: 5 دقائق
+        return settings.get('free_time_limit', 5)
+    except Exception as e:
+        logger.error(f"❌ فشل جلب الحد الزمني: {e}")
+        return 5
+
+
+def set_daily_download_limit(count: int):
+    """تعيين عدد التحميلات اليومية المسموح بها للمستخدمين غير المشتركين"""
+    try:
+        if settings_collection is None:
+            return False
+
+        if count < 0:
+            logger.warning("⚠️ عدد التحميلات لا يمكن أن يكون سالب، استخدام 0")
+            count = 0
+
+        settings_collection.update_one(
+            {'_id': 'general_limits'},
+            {
+                '$set': {
+                    'daily_download_limit': int(count),
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        logger.info(f"✅ تم تعيين الحد اليومي لغير المشتركين إلى: {count} تحميل")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث الحد اليومي: {e}")
+        return False
+
+
+def get_daily_download_limit_setting():
+    """جلب عدد التحميلات اليومية المسموح بها للمستخدمين غير المشتركين"""
+    try:
+        settings = get_general_limits()
+        if not settings:
+            return 3  # الافتراضي: 3 تحميلات
+        return settings.get('daily_download_limit', 3)
+    except Exception as e:
+        logger.error(f"❌ فشل جلب الحد اليومي: {e}")
+        return 3
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Error Reporting System
 # ═══════════════════════════════════════════════════════════════
 
