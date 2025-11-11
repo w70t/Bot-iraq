@@ -75,13 +75,20 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_enabled = is_subscription_enabled()
     sub_status = "✅" if sub_enabled else "🚫"
 
+    # جلب حالة الصوتيات
+    from database import is_audio_enabled
+    audio_status = is_audio_enabled()
+    audio_text = "✅ مفعّل" if audio_status else "❌ معطّل"
+
     keyboard = [
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
         [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
         [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
         [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
+        [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
         [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+        [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
         [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
         [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
         [InlineKeyboardButton("❌ إغلاق", callback_data="admin_close")]
@@ -1664,6 +1671,531 @@ async def handle_sub_toggle_notif(update: Update, context: ContextTypes.DEFAULT_
     return await show_vip_control_panel(update, context)
 
 
+# ═══════════════════════════════════════════════════════════════
+#  Audio Settings Panel
+# ═══════════════════════════════════════════════════════════════
+
+async def show_audio_settings_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة إعدادات تحميل الصوتيات"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_audio_settings, get_audio_limit_minutes, is_audio_enabled
+
+    # جلب الإعدادات الحالية
+    settings = get_audio_settings()
+    audio_enabled = is_audio_enabled()
+    audio_limit = get_audio_limit_minutes()
+
+    status_text = "✅ مفعّل" if audio_enabled else "❌ معطّل"
+
+    message_text = (
+        "🎧 **إعدادات تحميل الصوتيات**\n\n"
+        f"📊 **الإعدادات الحالية:**\n"
+        f"• الحالة العامة: {status_text}\n"
+        f"• الحد الأقصى لغير المشتركين: {audio_limit} دقيقة\n"
+        f"• للمشتركين VIP: ♾️ غير محدود\n\n"
+        f"💡 **ملاحظات:**\n"
+        f"• إذا كان المقطع الصوتي أطول من الحد المسموح، سيُمنع التحميل\n"
+        f"• المشتركون VIP يمكنهم تحميل صوتيات بلا حدود\n\n"
+        f"اختر الإجراء المطلوب:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ تفعيل تحميل الصوتيات", callback_data="audio_enable")],
+        [InlineKeyboardButton("❌ إيقاف تحميل الصوتيات", callback_data="audio_disable")],
+        [InlineKeyboardButton("⏱️ تعيين حد زمني مخصص", callback_data="audio_set_custom_limit")],
+        [InlineKeyboardButton("↩️ العودة للقائمة الرئيسية", callback_data="admin_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    try:
+        await query.edit_message_text(
+            message_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        logger.debug(f"تم تجاهل خطأ تعديل الرسالة: {e}")
+
+    return MAIN_MENU
+
+
+async def handle_audio_enable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تفعيل تحميل الصوتيات"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import set_audio_enabled
+
+    success = set_audio_enabled(True)
+
+    if success:
+        await query.answer("✅ تم تفعيل تحميل الصوتيات بنجاح!", show_alert=True)
+    else:
+        await query.answer("❌ فشل تفعيل تحميل الصوتيات!", show_alert=True)
+
+    return await show_audio_settings_panel(update, context)
+
+
+async def handle_audio_disable(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إيقاف تحميل الصوتيات"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import set_audio_enabled
+
+    success = set_audio_enabled(False)
+
+    if success:
+        await query.answer("❌ تم إيقاف تحميل الصوتيات!", show_alert=True)
+    else:
+        await query.answer("❌ فشل إيقاف تحميل الصوتيات!", show_alert=True)
+
+    return await show_audio_settings_panel(update, context)
+
+
+AWAITING_AUDIO_LIMIT = 6  # New conversation state
+
+async def handle_audio_set_custom_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """طلب إدخال حد زمني مخصص"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "⏱️ **أدخل الحد الزمني المخصص:**\n\n"
+        "📝 مثال: 15 (يعني 15 دقيقة)\n"
+        "⚠️ أدخل رقم فقط (بالدقائق)\n\n"
+        "💡 اكتب الحد الزمني وأرسله الآن:"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_audio_settings")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    # حفظ الحالة لاستقبال الحد الزمني
+    context.user_data['awaiting_audio_limit'] = True
+
+    return AWAITING_AUDIO_LIMIT
+
+
+async def receive_audio_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال الحد الزمني المخصص"""
+    if not context.user_data.get('awaiting_audio_limit'):
+        return MAIN_MENU
+
+    from database import set_audio_limit_minutes
+
+    limit_text = update.message.text.strip()
+
+    try:
+        limit = float(limit_text)
+
+        if limit < 0:
+            await update.message.reply_text(
+                "❌ **الحد الزمني غير صحيح!**\n\n✅ أدخل رقم موجب (مثال: 10)",
+                parse_mode='Markdown'
+            )
+            return AWAITING_AUDIO_LIMIT
+
+        success = set_audio_limit_minutes(limit)
+
+        if success:
+            await update.message.reply_text(
+                f"✅ **تم تحديث الحد الزمني بنجاح!**\n\n⏱️ الحد الجديد: {limit} دقيقة",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "❌ **فشل تحديث الحد الزمني!** يرجى المحاولة مرة أخرى.",
+                parse_mode='Markdown'
+            )
+
+        # حذف الحالة
+        context.user_data.pop('awaiting_audio_limit', None)
+
+        # العودة للوحة التحكم
+        keyboard = [[InlineKeyboardButton("↩️ العودة للوحة إعدادات الصوت", callback_data="admin_audio_settings")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            "اختر الإجراء التالي:",
+            reply_markup=reply_markup
+        )
+
+        return MAIN_MENU
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ **الحد الزمني غير صحيح!**\n\n✅ أدخل رقم فقط (مثال: 10)",
+            parse_mode='Markdown'
+        )
+        return AWAITING_AUDIO_LIMIT
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Error Reports Panel
+# ═══════════════════════════════════════════════════════════════
+
+async def show_error_reports_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة بلاغات المستخدمين"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_pending_error_reports
+
+    pending_reports = get_pending_error_reports(limit=20)
+
+    if not pending_reports:
+        message_text = "✅ **لا توجد بلاغات معلقة**\n\nجميع البلاغات تمت معالجتها."
+        keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="admin_back")]]
+    else:
+        message_text = f"🧾 **بلاغات المستخدمين المعلقة** ({len(pending_reports)})\n\n"
+
+        keyboard = []
+        for i, report in enumerate(pending_reports[:10], 1):  # أول 10 فقط
+            user_id = report.get('user_id', 'غير محدد')
+            username = report.get('username', 'مجهول')
+            error_type = report.get('error_type', 'خطأ')
+            created_at = report.get('created_at')
+
+            if created_at:
+                created_str = created_at.strftime('%m/%d %H:%M')
+            else:
+                created_str = 'N/A'
+
+            message_text += f"{i}️⃣ @{username} — {error_type} ({created_str})\n"
+
+            # زر لكل بلاغ
+            report_id = str(report['_id'])
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"🔧 حل بلاغ #{i}",
+                    callback_data=f"resolve_report:{report_id}"
+                )
+            ])
+
+        if len(pending_reports) > 10:
+            message_text += f"\n... و {len(pending_reports) - 10} بلاغات أخرى"
+
+        keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="admin_back")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+AWAITING_ADMIN_NOTE = 7  # New conversation state
+
+async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة حل بلاغ"""
+    query = update.callback_query
+    await query.answer()
+
+    report_id = query.data.split(":")[1]
+
+    from database import get_error_report_by_id
+
+    report = get_error_report_by_id(report_id)
+
+    if not report:
+        await query.answer("❌ لم يتم العثور على البلاغ!", show_alert=True)
+        return await show_error_reports_panel(update, context)
+
+    user_id = report.get('user_id')
+    username = report.get('username', 'مجهول')
+    url = report.get('url', 'N/A')
+    error_type = report.get('error_type', 'خطأ')
+    error_message = report.get('error_message', 'لا توجد تفاصيل')
+
+    message_text = (
+        f"🔍 **تفاصيل البلاغ:**\n\n"
+        f"👤 المستخدم: @{username} (ID: {user_id})\n"
+        f"🔗 الرابط: {url[:50]}...\n"
+        f"⚠️ نوع الخطأ: {error_type}\n"
+        f"💬 الرسالة: {error_message[:100]}...\n\n"
+        f"🔧 **هل تم حل المشكلة؟**"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ نعم، تم الحل (إرسال إشعار)", callback_data=f"confirm_resolve:{report_id}")],
+        [InlineKeyboardButton("❌ لم تُحل بعد", callback_data="admin_error_reports")],
+        [InlineKeyboardButton("🔙 العودة", callback_data="admin_error_reports")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        message_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def handle_confirm_resolve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تأكيد حل البلاغ وإرسال إشعار"""
+    query = update.callback_query
+    await query.answer()
+
+    report_id = query.data.split(":")[1]
+
+    from database import get_error_report_by_id, resolve_error_report
+
+    report = get_error_report_by_id(report_id)
+
+    if not report:
+        await query.answer("❌ لم يتم العثور على البلاغ!", show_alert=True)
+        return await show_error_reports_panel(update, context)
+
+    user_id = report.get('user_id')
+
+    # حل البلاغ في قاعدة البيانات
+    success = resolve_error_report(report_id)
+
+    if success:
+        # إرسال إشعار للمستخدم
+        try:
+            notification_text = (
+                "✅ **تم تصليح مشكلتك!**\n\n"
+                "يمكنك الآن التحميل مرة أخرى 🎧\n\n"
+                "شكراً لصبرك! 💚"
+            )
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=notification_text,
+                parse_mode='Markdown'
+            )
+
+            logger.info(f"✅ تم إرسال إشعار الحل للمستخدم {user_id}")
+            await query.answer("✅ تم حل البلاغ وإرسال إشعار للمستخدم!", show_alert=True)
+
+        except Exception as e:
+            log_warning(f"⚠️ فشل إرسال الإشعار للمستخدم {user_id}: {e}", module="handlers/admin.py")
+            await query.answer("✅ تم حل البلاغ (لكن فشل إرسال الإشعار)", show_alert=True)
+
+    else:
+        await query.answer("❌ فشل حل البلاغ!", show_alert=True)
+
+    return await show_error_reports_panel(update, context)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Broadcast System Enhancement - Individual User Messaging
+# ═══════════════════════════════════════════════════════════════
+
+AWAITING_USER_ID_BROADCAST = 8
+AWAITING_MESSAGE_BROADCAST = 9
+
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء نظام الإرسال الجماعي المُحسّن"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "📢 **نظام الإرسال الجماعي**\n\n"
+        "اختر نوع الإرسال:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📩 إرسال لجميع المستخدمين", callback_data="broadcast_all")],
+        [InlineKeyboardButton("👤 إرسال لمستخدم محدد", callback_data="broadcast_individual")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def broadcast_all_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء الإرسال لجميع المستخدمين"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "📢 **إرسال رسالة لجميع المستخدمين**\n\n"
+        "أرسل الرسالة التي تريد إرسالها للجميع:\n\n"
+        "⚠️ تأكد من صياغة الرسالة بعناية!"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup
+    )
+
+    context.user_data['broadcast_type'] = 'all'
+
+    return BROADCAST_MESSAGE
+
+
+async def broadcast_individual_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء الإرسال لمستخدم محدد"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "👤 **إرسال رسالة لمستخدم محدد**\n\n"
+        "أرسل معرف المستخدم (User ID):\n\n"
+        "💡 مثال: 123456789"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup
+    )
+
+    context.user_data['broadcast_type'] = 'individual'
+
+    return AWAITING_USER_ID_BROADCAST
+
+
+async def receive_user_id_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال معرف المستخدم للإرسال الفردي"""
+    user_input = update.message.text.strip()
+
+    # التحقق من صحة معرف المستخدم
+    is_valid, validated_user_id, error_msg = validate_user_id(user_input)
+
+    if not is_valid:
+        await update.message.reply_text(
+            f"❌ {error_msg}\n\n"
+            "أرسل User ID صحيح (رقم): مثال 123456789"
+        )
+        return AWAITING_USER_ID_BROADCAST
+
+    # التحقق من وجود المستخدم في قاعدة البيانات
+    user_data = get_user(validated_user_id)
+
+    if not user_data:
+        await update.message.reply_text(
+            "❌ المستخدم غير موجود في قاعدة البيانات!\n"
+            "تأكد من أن المستخدم قام بإرسال /start للبوت."
+        )
+        return AWAITING_USER_ID_BROADCAST
+
+    # حفظ معرف المستخدم
+    context.user_data['target_user_id'] = validated_user_id
+
+    user_name = user_data.get('full_name', 'غير معروف')
+    username = user_data.get('username', 'لا يوجد')
+
+    text = (
+        f"✅ **تم العثور على المستخدم:**\n\n"
+        f"👤 الاسم: {user_name}\n"
+        f"🆔 المعرف: {validated_user_id}\n"
+        f"🔗 اليوزر: @{username if username != 'لا يوجد' else 'غير متوفر'}\n\n"
+        f"📝 **أرسل الرسالة الآن:**"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    return AWAITING_MESSAGE_BROADCAST
+
+
+async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إرسال الرسالة الجماعية (محسّن)"""
+    message_text = update.message.text
+    broadcast_type = context.user_data.get('broadcast_type', 'all')
+
+    if broadcast_type == 'all':
+        # إرسال لجميع المستخدمين
+        all_users = get_all_users()
+
+        await update.message.reply_text(
+            f"📤 جاري الإرسال إلى {len(all_users)} مستخدم..."
+        )
+
+        success_count = 0
+        failed_count = 0
+
+        for user in all_users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user['user_id'],
+                    text=message_text
+                )
+                success_count += 1
+            except Exception as e:
+                log_warning(f"فشل إرسال لـ {user['user_id']}: {e}", module="handlers/admin.py")
+                failed_count += 1
+
+        result_text = (
+            f"✅ **تم الإرسال!**\n\n"
+            f"✔️ نجح: {success_count}\n"
+            f"❌ فشل: {failed_count}\n"
+            f"📊 الإجمالي: {len(all_users)}"
+        )
+
+    else:
+        # إرسال لمستخدم محدد
+        target_user_id = context.user_data.get('target_user_id')
+
+        if not target_user_id:
+            await update.message.reply_text("❌ خطأ! لم يتم تحديد المستخدم.")
+            return MAIN_MENU
+
+        try:
+            await context.bot.send_message(
+                chat_id=target_user_id,
+                text=message_text
+            )
+
+            result_text = f"✅ **تم إرسال الرسالة بنجاح!**\n\n📨 إلى المستخدم: {target_user_id}"
+
+        except Exception as e:
+            log_warning(f"فشل إرسال لـ {target_user_id}: {e}", module="handlers/admin.py")
+            result_text = f"❌ **فشل إرسال الرسالة!**\n\n⚠️ تحقق من صحة معرف المستخدم."
+
+    keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="admin_main")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        result_text,
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+    # حذف الحالة
+    context.user_data.pop('broadcast_type', None)
+    context.user_data.pop('target_user_id', None)
+
+    return MAIN_MENU
+
+
 async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """العودة للقائمة الرئيسية"""
     return await admin_panel(update, context)
@@ -1723,9 +2255,21 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(handle_sub_toggle_notif, pattern='^sub_toggle_notif$'),
             # Mission 10: Download Logs
             CallbackQueryHandler(show_download_logs, pattern='^admin_download_logs$'),
+            # Audio Settings
+            CallbackQueryHandler(show_audio_settings_panel, pattern='^admin_audio_settings$'),
+            CallbackQueryHandler(handle_audio_enable, pattern='^audio_enable$'),
+            CallbackQueryHandler(handle_audio_disable, pattern='^audio_disable$'),
+            CallbackQueryHandler(handle_audio_set_custom_limit, pattern='^audio_set_custom_limit$'),
+            # Error Reports
+            CallbackQueryHandler(show_error_reports_panel, pattern='^admin_error_reports$'),
+            CallbackQueryHandler(handle_resolve_report, pattern='^resolve_report:'),
+            CallbackQueryHandler(handle_confirm_resolve, pattern='^confirm_resolve:'),
+            # Broadcast System Enhanced
+            CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
+            CallbackQueryHandler(broadcast_all_start, pattern='^broadcast_all$'),
+            CallbackQueryHandler(broadcast_individual_start, pattern='^broadcast_individual$'),
             # القائمة القديمة
             CallbackQueryHandler(list_users, pattern='^admin_list_users$'),
-            CallbackQueryHandler(broadcast_start, pattern='^admin_broadcast$'),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
             CallbackQueryHandler(admin_panel, pattern='^admin_main$'),
             CallbackQueryHandler(admin_close, pattern='^admin_close$'),
@@ -1746,6 +2290,19 @@ admin_conv_handler = ConversationHandler(
         AWAITING_CUSTOM_PRICE: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_custom_price),
             CallbackQueryHandler(handle_sub_change_price, pattern='^sub_change_price$'),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_AUDIO_LIMIT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_audio_limit),
+            CallbackQueryHandler(show_audio_settings_panel, pattern='^admin_audio_settings$'),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_USER_ID_BROADCAST: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, receive_user_id_broadcast),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_MESSAGE_BROADCAST: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, send_broadcast),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },

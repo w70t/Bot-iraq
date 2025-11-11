@@ -172,7 +172,7 @@ def is_adult_content(url: str, title: str = "") -> bool:
     return False
 
 async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message):
-    """إرسال سجل التحميل إلى قناة اللوج - forward-only (no re-upload)"""
+    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ"""
     if not LOG_CHANNEL_ID:
         return
 
@@ -186,46 +186,90 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     user_name = user.full_name
     username = f"@{user.username}" if user.username else "مجهول"
 
-    video_title = video_info.get('title', 'N/A')
+    video_title = video_info.get('title', 'غير متوفر (No title)')
     video_url = video_info.get('webpage_url', 'N/A')
     duration = video_info.get('duration', 0)
+    view_count = video_info.get('view_count', 0)
+    like_count = video_info.get('like_count', 0)
+
+    # تنسيق عدد المشاهدات والإعجابات
+    if view_count > 0:
+        if view_count >= 1_000_000:
+            views_text = f"{view_count / 1_000_000:.1f}M views"
+        elif view_count >= 1_000:
+            views_text = f"{view_count / 1_000:.1f}K views"
+        else:
+            views_text = f"{view_count} views"
+    else:
+        views_text = "N/A"
+
+    if like_count > 0:
+        if like_count >= 1_000_000:
+            likes_text = f"{like_count / 1_000_000:.1f}M reactions"
+        elif like_count >= 1_000:
+            likes_text = f"{like_count / 1_000:.1f}K reactions"
+        else:
+            likes_text = f"{like_count} reactions"
+    else:
+        likes_text = "N/A"
+
+    # تنسيق المدة
+    if duration > 0:
+        minutes = int(duration // 60)
+        seconds = int(duration % 60)
+        duration_text = f"{minutes:02d}:{seconds:02d}"
+    else:
+        duration_text = "00:00"
 
     # حساب حجم الملف
     try:
         file_size_bytes = os.path.getsize(file_path)
+        size_kb = file_size_bytes / 1024
         size_mb = file_size_bytes / (1024 * 1024)
+
+        if size_mb >= 1:
+            size_text = f"{size_mb:.2f} MB"
+        else:
+            size_text = f"{size_kb:.2f} KB"
     except:
-        size_mb = 0
+        size_text = "N/A"
+
+    # الوقت بتنسيق DD-MM-YYYY — HH:MM UTC
+    timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
 
     try:
-        # 1) Forward the video message to logs channel (no re-upload)
+        # 1) Forward الفيديو إلى قناة السجلات
         forwarded = await context.bot.forward_message(
             chat_id=log_channel_id,
             from_chat_id=update.effective_chat.id,
             message_id=sent_message.message_id
         )
 
-        # 2) Send info reply under forwarded video
+        # 2) إرسال رسالة نصية منسقة قابلة للنسخ بالكامل
         info_text = (
-            f"🎬 *فيديو جديد تم معالجته*\n\n"
-            f"👤 المستخدم: @{username} ({user_id})\n"
-            f"🔗 الرابط: [اضغط للفتح]({video_url})\n"
-            f"🏷️ العنوان: {video_title[:100]}\n"
-            f"📦 الحجم: {size_mb:.2f} MB\n"
-            f"⏱️ المدة: {duration}s\n"
-            f"🕒 الوقت: {datetime.utcnow().strftime('%Y-%m-%d — %H:%M UTC')}\n\n"
-            f"🎥 الفيديو مرفق أعلاه مباشرة."
+            "🎥 **فيديو جديد تم معالجته**\n"
+            f"👤 المستخدم: @{username} (ID: {user_id})\n"
+            f"🔗 الرابط: {video_url}\n"
+            f"🎞️ العنوان: {video_title}\n"
+            f"📊 المشاهدات: {views_text}\n"
+            f"💬 التفاعلات: {likes_text}\n"
+            f"⏱️ المدة: {duration_text}\n"
+            f"📦 الحجم: {size_text}\n"
+            f"📅 الوقت: {timestamp}\n"
+            f"🎬 **الفيديو مرفق أعلاه مباشرة.**"
         )
+
+        # الانتظار ثانية واحدة قبل إرسال النص لضمان ترتيب الرسائل
+        await asyncio.sleep(1)
 
         await context.bot.send_message(
             chat_id=log_channel_id,
             text=info_text,
             parse_mode="Markdown",
-            reply_to_message_id=forwarded.message_id,
             disable_web_page_preview=True
         )
 
-        logger.info(f"✅ تم إرسال الفيديو والمعلومات إلى قناة السجلات (forward-only)")
+        logger.info(f"✅ تم إرسال الفيديو ورسالة نصية قابلة للنسخ إلى قناة السجلات")
 
     except Exception as e:
         log_warning(f"❌ فشل إرسال الفيديو إلى قناة السجل: {e}", module="handlers/download.py")
@@ -266,21 +310,60 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
     """معالجة اختيار الجودة"""
     query = update.callback_query
     await query.answer()
-    
+
     quality_choice = query.data.replace("quality_", "")
-    
+
     pending_data = context.user_data.get('pending_download')
     if not pending_data:
         await query.edit_message_text("❌ انتهت صلاحية الطلب. أرسل الرابط مرة أخرى.")
         return
-    
+
     url = pending_data['url']
     info_dict = pending_data['info']
-    
+
+    # التحقق من مدة الصوتيات إذا اختار المستخدم "صوت فقط"
+    if quality_choice == 'audio':
+        user_id = query.from_user.id
+
+        from database import is_audio_enabled, get_audio_limit_minutes, is_subscribed, is_admin
+
+        # التحقق من تفعيل الصوتيات
+        if not is_audio_enabled():
+            await query.edit_message_text(
+                "🚫 **تحميل الصوتيات معطل حالياً!**\n\n"
+                "يرجى اختيار جودة فيديو بدلاً من ذلك."
+            )
+            return
+
+        # التحقق من حد المدة (للمستخدمين غير المشتركين وغير المدراء)
+        if not is_subscribed(user_id) and not is_admin(user_id):
+            duration_seconds = info_dict.get('duration', 0)
+
+            if duration_seconds > 0:
+                duration_minutes = duration_seconds / 60
+                audio_limit_minutes = get_audio_limit_minutes()
+
+                if duration_minutes > audio_limit_minutes:
+                    keyboard = [[InlineKeyboardButton(
+                        "⭐ اشترك في VIP للتحميل غير المحدود",
+                        url="https://instagram.com/7kmmy"
+                    )]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+
+                    await query.edit_message_text(
+                        f"🚫 **لا يمكنك تحميل مقاطع صوتية أطول من {audio_limit_minutes} دقيقة!**\n\n"
+                        f"⏱️ مدة المقطع: {duration_minutes:.1f} دقيقة\n"
+                        f"🔒 الحد المسموح: {audio_limit_minutes} دقيقة\n\n"
+                        f"💎 **اشترك في VIP للحصول على تحميل غير محدود!**",
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+                    return
+
     del context.user_data['pending_download']
-    
+
     await query.edit_message_text("⏳ جاري التحضير...")
-    
+
     await download_video_with_quality(update, context, url, info_dict, quality_choice)
 
 def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
@@ -878,24 +961,70 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     except Exception as e:
         logger.error(f"❌ خطأ: {e}", exc_info=True)
 
+        # تحديد نوع الخطأ
+        error_type = type(e).__name__
+        error_message = str(e)
+
         # تسجيل خطأ التحميل محلياً (ليس خطأ جسيم)
-        error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {str(e)}"
+        error_details = f"فشل تحميل فيديو للمستخدم {user_id}\nالرابط: {url}\nالخطأ: {error_message}"
         log_warning(error_details, module="handlers/download.py")
 
         # تسجيل الإحصائيات - تحميل فاشل
         from database import record_download_attempt
         record_download_attempt(success=False, speed=0)
 
-        error_text = f"❌ فشل التحميل!\n\nتأكد من أن الرابط صحيح ويمكن الوصول إليه."
+        # === نظام البلاغات التلقائي ===
+        # 1. إنشاء بلاغ في قاعدة البيانات
+        from database import create_error_report
+
+        username = user.username if user.username else user.full_name
+        report_id = create_error_report(
+            user_id=user_id,
+            username=username,
+            url=url,
+            error_type=error_type,
+            error_message=error_message[:500]  # حد 500 حرف
+        )
+
+        # 2. إرسال تقرير إلى قناة السجلات
+        if LOG_CHANNEL_ID:
+            try:
+                log_channel_id = int(LOG_CHANNEL_ID)
+                error_report_text = (
+                    "⚠️ **فشل تحميل جديد**\n\n"
+                    f"👤 المستخدم: @{username} (ID: {user_id})\n"
+                    f"🔗 الرابط: {url[:100]}\n"
+                    f"⚠️ نوع الخطأ: `{error_type}`\n"
+                    f"💬 الرسالة: `{error_message[:200]}`\n"
+                    f"🕒 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
+
+                await context.bot.send_message(
+                    chat_id=log_channel_id,
+                    text=error_report_text,
+                    parse_mode='Markdown'
+                )
+
+                logger.info(f"✅ تم إرسال تقرير الخطأ لقناة السجلات")
+            except Exception as log_error:
+                log_warning(f"❌ فشل إرسال تقرير الخطأ لقناة السجلات: {log_error}", module="handlers/download.py")
+
+        # 3. إشعار المستخدم بالفشل وإبلاغ المدير
+        error_text = (
+            "❌ **حدث خطأ أثناء تحميل المقطع!**\n\n"
+            "📩 تم إرسال مشكلتك إلى المدير، وسيتم إعلامك عند التصليح.\n\n"
+            "شكراً لصبرك! 💚"
+        )
 
         try:
-            await processing_message.edit_text(error_text)
+            await processing_message.edit_text(error_text, parse_mode='Markdown')
         except Exception as edit_error:
             log_warning(f"فشل تعديل رسالة الخطأ: {edit_error}", module="handlers/download.py")
             try:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text=error_text
+                    text=error_text,
+                    parse_mode='Markdown'
                 )
             except Exception as send_error:
                 log_warning(f"فشل إرسال رسالة الخطأ: {send_error}", module="handlers/download.py")
