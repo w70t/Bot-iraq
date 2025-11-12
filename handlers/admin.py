@@ -53,10 +53,19 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
     await query.answer()
     return await admin_panel(update, context)
 
-@admin_only
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض لوحة التحكم الرئيسية"""
     user_id = update.effective_user.id
+
+    # ✅ فحص صلاحيات الأدمن
+    if not is_admin(user_id):
+        error_msg = "⛔ عذراً، هذا الأمر مخصص للمدراء فقط"
+        if update.callback_query:
+            await update.callback_query.answer(error_msg, show_alert=True)
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text(error_msg)
+            return ConversationHandler.END
 
     # جلب حالة اللوجو
     from database import is_logo_enabled
@@ -3041,7 +3050,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 admin_conv_handler = ConversationHandler(
     entry_points=[
         CommandHandler('admin', admin_panel),
-        CallbackQueryHandler(admin_panel, pattern='^admin_panel$')  # Support button click
+        CallbackQueryHandler(handle_admin_panel_callback, pattern='^admin_panel$')  # Support button click with permission check
     ],
     states={
         MAIN_MENU: [
