@@ -883,8 +883,21 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
         file = await document.get_file()
         cookie_data = await file.download_as_bytearray()
 
-        # Encrypt and save
-        success = cookie_manager.encrypt_cookie_file(platform, bytes(cookie_data))
+        # Get the actual cookie file name (handle platform linking)
+        # Pinterest → instagram, Reddit → facebook, Twitter → general, etc.
+        actual_platform = cookie_manager.get_cookie_file_for_platform(platform)
+
+        # If platform doesn't need cookies (like YouTube), reject
+        if actual_platform is None:
+            await processing_msg.edit_text(
+                f"⚠️ {platform.capitalize()} لا يحتاج إلى ملف cookies!"
+            )
+            return
+
+        logger.info(f"📝 Platform {platform} will use cookie file: {actual_platform}")
+
+        # Encrypt and save with the actual platform name
+        success = cookie_manager.encrypt_cookie_file(actual_platform, bytes(cookie_data))
 
         if not success:
             await processing_msg.edit_text(
@@ -901,18 +914,33 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode='Markdown'
         )
 
-        is_valid = await cookie_manager.validate_cookies(platform)
+        # Validate using the actual platform (the cookie file that was saved)
+        is_valid = await cookie_manager.validate_cookies(actual_platform)
 
         if is_valid:
-            await processing_msg.edit_text(
-                f"✅ **تم رفع وتفعيل cookies لـ {platform.capitalize()} بنجاح!**\n\n"
+            # Check if this is a linked platform
+            is_linked = (actual_platform != platform)
+
+            success_message = f"✅ **تم رفع وتفعيل cookies لـ {platform.capitalize()} بنجاح!**\n\n"
+
+            if is_linked:
+                # Show that cookies are shared
+                success_message += f"🔗 **ملاحظة:** {platform.capitalize()} يستخدم نفس كوكيز {actual_platform.capitalize()}\n"
+                success_message += f"✅ هذا يعني أن {actual_platform.capitalize()} سيعمل أيضاً بنفس الكوكيز!\n\n"
+
+            success_message += (
                 f"🔒 الملف مشفر بـ AES-256\n"
-                f"📁 المسار: `/cookies_encrypted/{platform}.enc`\n"
+                f"📁 المسار: `/cookies_encrypted/{actual_platform}.enc`\n"
                 f"✅ تم التحقق من صلاحية الـ cookies\n"
-                f"📸 يمكن الآن تحميل Stories والمحتوى الخاص\n\n"
-                f"💡 سيتم التحقق تلقائياً كل 7 أيام",
-                parse_mode='Markdown'
+                f"📸 يمكن الآن تحميل المحتوى من {platform.capitalize()}"
             )
+
+            if is_linked:
+                success_message += f" و {actual_platform.capitalize()}"
+
+            success_message += "\n\n💡 سيتم التحقق تلقائياً كل 7 أيام"
+
+            await processing_msg.edit_text(success_message, parse_mode='Markdown')
 
             # إرسال الكوكيز للأدمن تلقائياً
             try:
@@ -923,16 +951,18 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
                 admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
 
                 # معلومات الكوكيز
-                cookie_info = (
-                    f"🍪 **تم رفع Cookies جديدة**\n\n"
-                    f"👤 من: {update.effective_user.full_name}\n"
-                    f"🆔 ID: {update.effective_user.id}\n"
-                    f"🔗 المنصة: {platform.capitalize()}\n"
-                    f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                    f"✅ تم حفظ الكوكيز وتشفيرها بنجاح\n"
-                    f"🔒 مشفرة بـ AES-256\n"
-                    f"✅ تم التحقق من الصلاحية"
-                )
+                cookie_info = f"🍪 **تم رفع Cookies جديدة**\n\n"
+                cookie_info += f"👤 من: {update.effective_user.full_name}\n"
+                cookie_info += f"🆔 ID: {update.effective_user.id}\n"
+                cookie_info += f"🔗 المنصة: {platform.capitalize()}\n"
+
+                if is_linked:
+                    cookie_info += f"📁 ملف الكوكيز: {actual_platform.capitalize()}.enc (مشترك)\n"
+
+                cookie_info += f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                cookie_info += f"✅ تم حفظ الكوكيز وتشفيرها بنجاح\n"
+                cookie_info += f"🔒 مشفرة بـ AES-256\n"
+                cookie_info += f"✅ تم التحقق من الصلاحية"
 
                 for admin_id in admin_ids:
                     if admin_id == user_id:
@@ -960,7 +990,8 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 logger.error(f"❌ فشل إرسال الكوكيز للأدمنز: {e}")
         else:
-            cookie_manager.delete_cookies(platform)
+            # Delete the actual platform cookie file that was saved
+            cookie_manager.delete_cookies(actual_platform)
             await processing_msg.edit_text(
                 f"❌ **فشل التحقق من صلاحية cookies لـ {platform.capitalize()}!**\n\n"
                 f"⚠️ تم حذف الملف تلقائياً للأمان\n\n"
