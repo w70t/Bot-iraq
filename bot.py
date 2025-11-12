@@ -139,7 +139,19 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("RAILWAY_PUBLIC_DOMAIN")
 PORT = int(os.getenv("PORT", 8443))
+
+# Validate LOG_CHANNEL_ID
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
+if LOG_CHANNEL_ID:
+    try:
+        LOG_CHANNEL_ID = int(LOG_CHANNEL_ID)
+        logger.info(f"✅ LOG_CHANNEL_ID validated: {LOG_CHANNEL_ID}")
+    except (ValueError, TypeError):
+        logger.error(f"❌ LOG_CHANNEL_ID invalid: {LOG_CHANNEL_ID}")
+        LOG_CHANNEL_ID = None
+else:
+    logger.warning("⚠️ LOG_CHANNEL_ID not configured")
+    LOG_CHANNEL_ID = None
 
 # باقي الكود كما هو...
 async def forward_to_log_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
