@@ -944,7 +944,7 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     success_count = 0
     failed_count = 0
-    
+
     for user in all_users:
         try:
             await context.bot.send_message(
@@ -952,6 +952,8 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=message_text
             )
             success_count += 1
+            # ✅ إضافة rate limiting: تأخير 50ms بين كل رسالة
+            await asyncio.sleep(0.05)
         except Exception as e:
             log_warning(f"فشل إرسال لـ {user['user_id']}: {e}", module="handlers/admin.py")
             failed_count += 1

