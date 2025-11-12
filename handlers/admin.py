@@ -3137,7 +3137,7 @@ admin_conv_handler = ConversationHandler(
         AWAITING_USER_ID: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_user_id),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
-            CallbackQueryHandler(admin_back, pattern='^admin_main$'),
+            CallbackQueryHandler(admin_panel, pattern='^admin_main$'),
         ],
         AWAITING_DAYS: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_days),
