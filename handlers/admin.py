@@ -2663,7 +2663,8 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                 "❌ يرجى إرسال ملف الكوكيز أو لصق محتواه مباشرة\n\n"
                 "💡 استخدم إضافة Cookie-Editor لتصدير الكوكيز"
             )
-            return ConversationHandler.END
+            context.user_data.pop('cookie_upload_platform', None)
+            return AWAITING_PLATFORM_COOKIE
 
         # ==================== الاكتشاف التلقائي ====================
 
@@ -2694,7 +2695,8 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                 "❌ خطأ: لم يتم تحديد المنصة\n\n"
                 "💡 تأكد من أن ملف الكوكيز يحتوي على بيانات صحيحة"
             )
-            return ConversationHandler.END
+            context.user_data.pop('cookie_upload_platform', None)
+            return MAIN_MENU
 
         # ==================== تحليل الكوكيز ====================
 
@@ -2725,7 +2727,7 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
 
             # إعادة تعيين الحالة
             context.user_data.pop('cookie_upload_platform', None)
-            return ConversationHandler.END
+            return MAIN_MENU
 
         # ==================== حفظ الكوكيز ====================
 
@@ -2786,7 +2788,7 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        return ConversationHandler.END
+        return MAIN_MENU
 
     except Exception as e:
         logger.error(f"❌ Error in handle_platform_cookie_upload: {e}")
@@ -2801,7 +2803,7 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
         # إعادة تعيين الحالة في حال الخطأ
         context.user_data.pop('cookie_upload_platform', None)
 
-        return ConversationHandler.END
+        return MAIN_MENU
 
 
 async def cancel_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3037,7 +3039,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ConversationHandler للوحة التحكم
 admin_conv_handler = ConversationHandler(
-    entry_points=[CommandHandler('admin', admin_panel)],
+    entry_points=[
+        CommandHandler('admin', admin_panel),
+        CallbackQueryHandler(admin_panel, pattern='^admin_panel$')  # Support button click
+    ],
     states={
         MAIN_MENU: [
             CallbackQueryHandler(admin_panel, pattern='^admin$'),  # Handle "Admin" button clicks
