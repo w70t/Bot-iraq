@@ -32,14 +32,27 @@ TEST_URLS = {
         'https://m.facebook.com/me',
         'https://www.facebook.com/settings',
     ],
-    'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173'
+    'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173',
+    'pinterest': 'https://www.pinterest.com/',
+    'twitter': 'https://twitter.com/home',
+    'reddit': 'https://www.reddit.com/',
+    'vimeo': 'https://vimeo.com/',
+    'dailymotion': 'https://www.dailymotion.com/',
+    'twitch': 'https://www.twitch.tv/',
+    'general': None  # General cookies don't need validation
 }
 
 # Platform detection patterns
 PLATFORM_PATTERNS = {
     'facebook': ['facebook.com', 'fb.watch', 'fb.com'],
     'instagram': ['instagram.com'],
-    'tiktok': ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com']
+    'tiktok': ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'],
+    'pinterest': ['pinterest.com', 'pin.it'],
+    'twitter': ['twitter.com', 'x.com', 't.co'],
+    'reddit': ['reddit.com', 'redd.it'],
+    'vimeo': ['vimeo.com'],
+    'dailymotion': ['dailymotion.com', 'dai.ly'],
+    'twitch': ['twitch.tv']
 }
 
 # Platform Cookie Linking (V5.1)
@@ -125,7 +138,7 @@ class CookieManager:
 
     def detect_platform_from_cookies(self, cookie_text: str) -> str:
         """
-        Detect platform from cookie domain (V5.2)
+        Detect platform from cookie domain (V5.3)
         Analyzes cookie domains to automatically identify the platform
         """
         cookie_text_lower = cookie_text.lower()
@@ -143,6 +156,12 @@ class CookieManager:
             return 'reddit'
         elif 'twitter.com' in cookie_text_lower or 'x.com' in cookie_text_lower:
             return 'twitter'
+        elif 'vimeo.com' in cookie_text_lower:
+            return 'vimeo'
+        elif 'dailymotion.com' in cookie_text_lower:
+            return 'dailymotion'
+        elif 'twitch.tv' in cookie_text_lower:
+            return 'twitch'
 
         return None
 
@@ -346,8 +365,26 @@ class CookieManager:
             logger.error(f"Error checking FB essential cookies: {e}")
             return False
 
+    def _ig_has_essential_cookies(self, cookie_file_path: str) -> bool:
+        """Check if Instagram cookie file contains essential cookies (sessionid, ds_user_id)"""
+        try:
+            import http.cookiejar
+            cookiejar = http.cookiejar.MozillaCookieJar()
+            cookiejar.load(cookie_file_path, ignore_discard=True, ignore_expires=True)
+
+            names = {c.name for c in cookiejar if "instagram" in c.domain}
+            # Essential Instagram cookies: sessionid is the main one
+            required = {"sessionid"}
+            has_essential = required.issubset(names)
+
+            logger.debug(f"IG cookies found: {names}, has essential: {has_essential}")
+            return has_essential
+        except Exception as e:
+            logger.error(f"Error checking IG essential cookies: {e}")
+            return False
+
     async def validate_cookies(self, platform: str) -> bool:
-        """Validate cookies by testing with yt-dlp (with soft validation for Facebook)"""
+        """Validate cookies by testing with yt-dlp (with soft validation for Facebook & Instagram)"""
         cookie_path = None
         try:
             # Decrypt temporarily
@@ -368,6 +405,10 @@ class CookieManager:
             # Special handling for Facebook with soft validation
             if platform == 'facebook':
                 return await self._validate_facebook_cookies(cookie_path, test_urls)
+
+            # Special handling for Instagram with soft validation
+            if platform == 'instagram':
+                return await self._validate_instagram_cookies(cookie_path, test_urls)
 
             # Standard validation for other platforms
             test_url = test_urls[0] if isinstance(test_urls, list) else test_urls
@@ -501,11 +542,90 @@ class CookieManager:
 
         return validation_ok if validation_ok else has_essential
 
+    async def _validate_instagram_cookies(self, cookie_path: str, test_urls: list) -> bool:
+        """Validate Instagram cookies with soft validation fallback"""
+        has_essential = self._ig_has_essential_cookies(cookie_path)
+
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'cookiefile': cookie_path,
+            'skip_download': True,
+            'extract_flat': True,
+            'socket_timeout': 30,
+        }
+
+        loop = asyncio.get_event_loop()
+        last_error = None
+        validation_ok = False
+
+        # Try each URL
+        for url in test_urls:
+            try:
+                def test_extract():
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.extract_info(url, download=False)
+
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, test_extract),
+                    timeout=30
+                )
+                validation_ok = True
+                logger.info(f"✅ Instagram cookies validated with URL: {url}")
+                break
+            except Exception as e:
+                last_error = str(e)
+                error_lower = last_error.lower()
+
+                # Check if it's an unsupported URL or login-related error
+                if "unsupported url" in error_lower or "login" in error_lower:
+                    logger.debug(f"URL {url} not supported or requires login: {e}")
+                    continue
+                else:
+                    logger.debug(f"Validation attempt failed for {url}: {e}")
+                    continue
+
+        # Update metadata based on validation result
+        metadata_path = COOKIES_ENCRYPTED_DIR / "instagram.json"
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+
+            if validation_ok:
+                # Full validation passed
+                metadata['validated'] = True
+                metadata['validation_type'] = 'full'
+                metadata['last_validated'] = datetime.now().isoformat()
+                self._log_event("✅ Instagram cookies validated successfully (full)")
+                logger.info("✅ Instagram cookies validated successfully (full)")
+            elif has_essential:
+                # Soft validation - essential cookies present
+                metadata['validated'] = True
+                metadata['validation_type'] = 'soft'
+                metadata['last_validated'] = datetime.now().isoformat()
+                self._log_event("ℹ️ Instagram cookies soft-validated (sessionid present)")
+                logger.warning("⚠️ Instagram validation inconclusive; core cookies present -> accepting as valid (soft)")
+                validation_ok = True
+            else:
+                # No validation and no essential cookies
+                metadata['validated'] = False
+                metadata['validation_type'] = 'failed'
+                metadata['last_error'] = last_error or "Missing essential cookies"
+                self._log_event(f"❌ Instagram cookie validation failed: {last_error}")
+
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+        return validation_ok if validation_ok else has_essential
+
     def get_cookie_status(self) -> dict:
-        """Get status of all encrypted cookies"""
+        """Get status of all encrypted cookies (V6.0 - All Platforms)"""
         status = {}
 
-        for platform in ['facebook', 'instagram', 'tiktok']:
+        # All supported platforms including general cookies
+        all_platforms = ['facebook', 'instagram', 'tiktok', 'pinterest', 'twitter', 'reddit', 'vimeo', 'dailymotion', 'twitch', 'general']
+
+        for platform in all_platforms:
             encrypted_path = COOKIES_ENCRYPTED_DIR / f"{platform}.enc"
             metadata_path = COOKIES_ENCRYPTED_DIR / f"{platform}.json"
 
@@ -696,16 +816,23 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(
             "❌ يرجى إرفاق ملف cookies بصيغة .txt\n\n"
             "💡 الملفات المدعومة:\n"
-            "• facebook.txt\n"
-            "• instagram.txt\n"
-            "• tiktok.txt"
+            "• facebook.txt / fb.txt\n"
+            "• instagram.txt / ig.txt\n"
+            "• tiktok.txt / tt.txt\n"
+            "• pinterest.txt\n"
+            "• twitter.txt / x.txt\n"
+            "• reddit.txt\n"
+            "• vimeo.txt\n"
+            "• dailymotion.txt\n"
+            "• twitch.txt\n"
+            "• general.txt (كوكيز عامة لجميع المنصات)"
         )
         return
 
     document = update.message.document
     filename = document.file_name.lower()
 
-    # Detect platform from filename
+    # Detect platform from filename (V6.0 - All Platforms Support)
     platform = None
     if 'facebook' in filename or 'fb' in filename:
         platform = 'facebook'
@@ -713,14 +840,35 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
         platform = 'instagram'
     elif 'tiktok' in filename or 'tt' in filename:
         platform = 'tiktok'
+    elif 'pinterest' in filename:
+        platform = 'pinterest'
+    elif 'twitter' in filename or filename.startswith('x.'):
+        platform = 'twitter'
+    elif 'reddit' in filename:
+        platform = 'reddit'
+    elif 'vimeo' in filename:
+        platform = 'vimeo'
+    elif 'dailymotion' in filename:
+        platform = 'dailymotion'
+    elif 'twitch' in filename:
+        platform = 'twitch'
+    elif 'general' in filename:
+        platform = 'general'
 
     if not platform:
         await update.message.reply_text(
             "❌ لم أتمكن من تحديد المنصة من اسم الملف!\n\n"
-            "💡 تأكد أن اسم الملف يحتوي على:\n"
-            "• facebook أو fb\n"
-            "• instagram أو ig\n"
-            "• tiktok أو tt"
+            "💡 تأكد أن اسم الملف يحتوي على اسم المنصة:\n"
+            "• facebook / fb\n"
+            "• instagram / ig\n"
+            "• tiktok / tt\n"
+            "• pinterest\n"
+            "• twitter / x\n"
+            "• reddit\n"
+            "• vimeo\n"
+            "• dailymotion\n"
+            "• twitch\n"
+            "• general (للكوكيز العامة)"
         )
         return
 
@@ -833,7 +981,7 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def show_cookie_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show cookie status to admin"""
+    """Show cookie status to admin (V6.0 - All Platforms)"""
     from database import is_admin
 
     user_id = update.effective_user.id
@@ -844,40 +992,76 @@ async def show_cookie_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     status = cookie_manager.get_cookie_status()
 
-    message = "🍪 **حالة ملفات Cookies**\n\n"
+    message = "🍪 **حالة ملفات Cookies - جميع المنصات**\n\n"
 
-    for platform, info in status.items():
-        platform_emoji = {
-            'facebook': '📘',
-            'instagram': '📸',
-            'tiktok': '🎵'
-        }
-        emoji = platform_emoji.get(platform, '📁')
+    # Define platform emojis for all platforms
+    platform_emoji = {
+        'facebook': '📘',
+        'instagram': '📸',
+        'tiktok': '🎵',
+        'pinterest': '📌',
+        'twitter': '🐦',
+        'reddit': '🤖',
+        'vimeo': '🎬',
+        'dailymotion': '▶️',
+        'twitch': '🎮',
+        'general': '🌐'
+    }
 
-        message += f"{emoji} **{platform.capitalize()}:**\n"
+    # Group platforms by their cookie source
+    cookie_groups = {
+        'facebook': ['facebook', 'reddit'],
+        'instagram': ['instagram', 'pinterest'],
+        'tiktok': ['tiktok'],
+        'general': ['twitter', 'vimeo', 'dailymotion', 'twitch', 'general']
+    }
 
-        if info['exists']:
-            age_days = info.get('age_days', 0)
-            validated = info.get('validated', False)
+    for cookie_source, platforms in cookie_groups.items():
+        # Check if cookie file exists
+        cookie_info = status.get(cookie_source, {})
+        has_cookie = cookie_info.get('exists', False)
 
-            # Age status
-            if age_days > 30:
-                age_status = f"⚠️ {age_days} يوم (قديمة)"
-            elif age_days > 14:
-                age_status = f"🟡 {age_days} يوم"
+        for platform in platforms:
+            emoji = platform_emoji.get(platform, '📁')
+            info = status.get(platform, {})
+
+            # Determine if this platform uses linked cookies
+            linked_to = PLATFORM_COOKIE_LINKS.get(platform)
+            is_linked = (linked_to != platform and linked_to is not None)
+
+            message += f"{emoji} **{platform.capitalize()}:**\n"
+
+            if is_linked:
+                # Show that this platform uses another platform's cookies
+                message += f"  • 🔗 يستخدم كوكيز {linked_to.capitalize()}\n"
+                if has_cookie:
+                    message += f"  • ✅ متوفرة (مشتركة)\n"
+                else:
+                    message += f"  • ❌ غير متوفرة\n"
             else:
-                age_status = f"✅ {age_days} يوم"
+                # Direct platform with its own cookies
+                if info.get('exists', False):
+                    age_days = info.get('age_days', 0)
+                    validated = info.get('validated', False)
 
-            # Validation status
-            val_status = "✅ صالحة" if validated else "⚠️ لم يتم التحقق"
+                    # Age status
+                    if age_days > 30:
+                        age_status = f"⚠️ {age_days} يوم (قديمة)"
+                    elif age_days > 14:
+                        age_status = f"🟡 {age_days} يوم"
+                    else:
+                        age_status = f"✅ {age_days} يوم"
 
-            message += f"  • الحالة: {val_status}\n"
-            message += f"  • العمر: {age_status}\n"
-            message += f"  • الحجم: {info.get('size', 0)} bytes\n"
-        else:
-            message += f"  • الحالة: ❌ غير موجودة\n"
+                    # Validation status
+                    val_status = "✅ صالحة" if validated else "⚠️ لم يتم التحقق"
 
-        message += "\n"
+                    message += f"  • الحالة: {val_status}\n"
+                    message += f"  • العمر: {age_status}\n"
+                    message += f"  • الحجم: {info.get('size', 0)} bytes\n"
+                else:
+                    message += f"  • الحالة: ❌ غير موجودة\n"
+
+            message += "\n"
 
     message += "💡 **معلومات:**\n"
     message += "• التحقق التلقائي: كل 7 أيام\n"
