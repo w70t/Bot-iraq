@@ -37,7 +37,7 @@ from handlers.notifications import (
     send_update_notification,
     announce_new_bot
 )
-from handlers.admin import admin_conv_handler
+from handlers.admin import admin_conv_handler, admin_command_handler
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
@@ -589,7 +589,10 @@ def main() -> None:
         pattern="^help$"
     ))
 
-    # 12. Handler للوحة تحكم الأدمن
+    # 12. Handler لأمر /admin - معالج بسيط ومباشر
+    application.add_handler(CommandHandler("admin", admin_command_handler))
+
+    # 12.5. Handler للوحة تحكم الأدمن (للحالات والأزرار)
     application.add_handler(admin_conv_handler)
 
     # 12.5. Playlist URL handler (before general download handler)
