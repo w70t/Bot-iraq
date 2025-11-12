@@ -3143,7 +3143,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 admin_conv_handler = ConversationHandler(
     entry_points=[
         CommandHandler('admin', admin_command_handler),  # معالج أمر /admin
-        CallbackQueryHandler(handle_admin_panel_callback, pattern='^admin_panel$')  # Support button click with permission check
+        # ملاحظة: تم نقل admin_panel handler خارج ConversationHandler لتسهيل الوصول
     ],
     states={
         MAIN_MENU: [
