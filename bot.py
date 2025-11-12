@@ -589,8 +589,37 @@ def main() -> None:
         pattern="^help$"
     ))
 
-    # 12. Handler للوحة تحكم الأدمن (يشمل أمر /admin والأزرار)
+    # 11.7. Handler لزر Admin Panel (قبل ConversationHandler للأولوية)
+    from handlers.admin import handle_admin_panel_callback
+    application.add_handler(CallbackQueryHandler(
+        handle_admin_panel_callback,
+        pattern="^admin_panel$"
+    ))
+
+    # 12. Handler للوحة تحكم الأدمن (يشمل أمر /admin والأزرار الداخلية)
     application.add_handler(admin_conv_handler)
+
+    # 12.2. Handlers للأزرار الداخلية في لوحة الادمن (خارج المحادثة)
+    from handlers.admin import (
+        show_statistics, upgrade_user_start, manage_logo,
+        show_vip_control_panel, show_general_limits_panel, show_audio_settings_panel,
+        manage_libraries, show_cookie_management_panel, show_error_reports_panel,
+        list_users, broadcast_start, admin_close, show_download_logs
+    )
+    # إضافة handlers للأزرار التي تظهر في لوحة التحكم الرئيسية
+    application.add_handler(CallbackQueryHandler(show_statistics, pattern="^admin_stats$"))
+    application.add_handler(CallbackQueryHandler(show_download_logs, pattern="^admin_download_logs$"))
+    application.add_handler(CallbackQueryHandler(upgrade_user_start, pattern="^admin_upgrade$"))
+    application.add_handler(CallbackQueryHandler(show_vip_control_panel, pattern="^admin_vip_control$"))
+    application.add_handler(CallbackQueryHandler(show_general_limits_panel, pattern="^admin_general_limits$"))
+    application.add_handler(CallbackQueryHandler(manage_logo, pattern="^admin_logo$"))
+    application.add_handler(CallbackQueryHandler(show_audio_settings_panel, pattern="^admin_audio_settings$"))
+    application.add_handler(CallbackQueryHandler(manage_libraries, pattern="^admin_libraries$"))
+    application.add_handler(CallbackQueryHandler(show_cookie_management_panel, pattern="^admin_cookies$"))
+    application.add_handler(CallbackQueryHandler(show_error_reports_panel, pattern="^admin_error_reports$"))
+    application.add_handler(CallbackQueryHandler(list_users, pattern="^admin_list_users$"))
+    application.add_handler(CallbackQueryHandler(broadcast_start, pattern="^admin_broadcast$"))
+    application.add_handler(CallbackQueryHandler(admin_close, pattern="^admin_close$"))
 
     # 12.5. Playlist URL handler (before general download handler)
     async def playlist_or_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
