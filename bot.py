@@ -599,10 +599,7 @@ def main() -> None:
         pattern="^admin_panel$"
     ))
 
-    # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط)
-    application.add_handler(admin_conv_handler)
-
-    # 12.2. Handlers للأزرار الداخلية في لوحة الادمن (خارج المحادثة)
+    # 11.8. Handlers للأزرار الداخلية في لوحة الادمن (قبل ConversationHandler للأولوية)
     from handlers.admin import (
         show_statistics, upgrade_user_start, manage_logo,
         show_vip_control_panel, show_general_limits_panel, show_audio_settings_panel,
@@ -623,6 +620,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(list_users, pattern="^admin_list_users$"))
     application.add_handler(CallbackQueryHandler(broadcast_start, pattern="^admin_broadcast$"))
     application.add_handler(CallbackQueryHandler(admin_close, pattern="^admin_close$"))
+
+    # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط - يأتي بعد handlers الأساسية)
+    application.add_handler(admin_conv_handler)
 
     # 12.5. Playlist URL handler (before general download handler)
     async def playlist_or_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
