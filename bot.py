@@ -459,6 +459,15 @@ def main() -> None:
     application.add_handler(CommandHandler("account", account_info))
     application.add_handler(CommandHandler("testsub", test_subscription))
 
+    # 3.3. Health Check & Auto-Report System
+    try:
+        from handlers.health_check import run_health_check, show_cookie_upload_info
+        application.add_handler(CommandHandler("healthcheck", run_health_check))
+        application.add_handler(CommandHandler("cookieinfo", show_cookie_upload_info))
+        logger.info("✅ تم تسجيل معالجات الفحص الصحي والتقارير التلقائية")
+    except Exception as e:
+        logger.error(f"❌ فشل تسجيل معالجات الفحص الصحي: {e}")
+
     # 3.5. Per-user cancel download + batch YouTube download
     application.add_handler(CommandHandler("cancel", cancel_download))
     application.add_handler(CommandHandler("batch", handle_batch_download))
