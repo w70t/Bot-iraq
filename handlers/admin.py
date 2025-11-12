@@ -105,7 +105,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     if update.callback_query:
-        await update.callback_query.answer()
+        await update.callback_query.answer(cache_time=0)  # Stop spinner immediately
         await update.callback_query.edit_message_text(
             message_text,
             reply_markup=reply_markup,
@@ -3065,7 +3065,7 @@ async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_close(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إغلاق لوحة التحكم"""
     query = update.callback_query
-    await query.answer()
+    await query.answer(cache_time=0)  # Stop spinner immediately
     await query.edit_message_text("✅ تم إغلاق لوحة التحكم")
     return ConversationHandler.END
 
@@ -3079,6 +3079,7 @@ admin_conv_handler = ConversationHandler(
     entry_points=[CommandHandler('admin', admin_panel)],
     states={
         MAIN_MENU: [
+            CallbackQueryHandler(admin_panel, pattern='^admin$'),  # Handle "Admin" button clicks
             CallbackQueryHandler(show_statistics, pattern='^admin_stats$'),
             CallbackQueryHandler(upgrade_user_start, pattern='^admin_upgrade$'),
             CallbackQueryHandler(manage_logo, pattern='^admin_logo$'),
