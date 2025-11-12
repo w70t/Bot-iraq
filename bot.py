@@ -604,9 +604,25 @@ def main() -> None:
         show_statistics, upgrade_user_start, manage_logo,
         show_vip_control_panel, show_general_limits_panel, show_audio_settings_panel,
         manage_libraries, show_cookie_management_panel, show_error_reports_panel,
-        list_users, broadcast_start, admin_close, show_download_logs
+        list_users, broadcast_start, admin_close, show_download_logs,
+        handle_platform_toggle, handle_approval_action, admin_back, admin_panel,
+        toggle_logo, show_animation_selector, set_animation_type,
+        show_position_selector, set_position, show_size_selector, set_size,
+        show_opacity_selector, set_opacity, library_details, library_stats,
+        library_approvals, library_update, library_reset_stats,
+        handle_sub_enable_confirm, handle_sub_disable_confirm,
+        handle_sub_enable_yes, handle_sub_disable_yes, handle_sub_action_cancel,
+        handle_sub_change_price, handle_sub_set_price, handle_sub_toggle_notif,
+        handle_audio_enable, handle_audio_disable, handle_audio_preset,
+        handle_audio_set_custom_limit, handle_resolve_report, handle_confirm_resolve,
+        handle_edit_time_limit, handle_edit_daily_limit,
+        handle_set_time_limit_preset, handle_set_time_limit_custom,
+        show_cookie_status_detail, handle_cookie_test_all, handle_cookie_test_stories,
+        show_cookie_encryption_info, handle_cookie_delete_all,
+        handle_upload_cookie_button, broadcast_all_start, broadcast_individual_start
     )
-    # إضافة handlers للأزرار التي تظهر في لوحة التحكم الرئيسية
+
+    # إضافة handlers للأزرار الرئيسية
     application.add_handler(CallbackQueryHandler(show_statistics, pattern="^admin_stats$"))
     application.add_handler(CallbackQueryHandler(show_download_logs, pattern="^admin_download_logs$"))
     application.add_handler(CallbackQueryHandler(upgrade_user_start, pattern="^admin_upgrade$"))
@@ -620,6 +636,53 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(list_users, pattern="^admin_list_users$"))
     application.add_handler(CallbackQueryHandler(broadcast_start, pattern="^admin_broadcast$"))
     application.add_handler(CallbackQueryHandler(admin_close, pattern="^admin_close$"))
+
+    # إضافة handlers للأزرار الفرعية (أزرار العودة والإعدادات الداخلية)
+    application.add_handler(CallbackQueryHandler(admin_back, pattern="^admin_back$"))
+    application.add_handler(CallbackQueryHandler(admin_panel, pattern="^admin_main$"))
+    application.add_handler(CallbackQueryHandler(handle_platform_toggle, pattern="^platform_(enable|disable)_"))
+    application.add_handler(CallbackQueryHandler(handle_approval_action, pattern="^(approve|deny)_"))
+    application.add_handler(CallbackQueryHandler(toggle_logo, pattern="^logo_(enable|disable)$"))
+    application.add_handler(CallbackQueryHandler(show_animation_selector, pattern="^logo_change_animation$"))
+    application.add_handler(CallbackQueryHandler(set_animation_type, pattern="^set_anim_"))
+    application.add_handler(CallbackQueryHandler(show_position_selector, pattern="^logo_change_position$"))
+    application.add_handler(CallbackQueryHandler(set_position, pattern="^set_pos_"))
+    application.add_handler(CallbackQueryHandler(show_size_selector, pattern="^logo_change_size$"))
+    application.add_handler(CallbackQueryHandler(set_size, pattern="^set_size_"))
+    application.add_handler(CallbackQueryHandler(show_opacity_selector, pattern="^logo_change_opacity$"))
+    application.add_handler(CallbackQueryHandler(set_opacity, pattern="^set_opacity_"))
+    application.add_handler(CallbackQueryHandler(library_details, pattern="^library_details$"))
+    application.add_handler(CallbackQueryHandler(library_stats, pattern="^library_stats$"))
+    application.add_handler(CallbackQueryHandler(library_approvals, pattern="^library_approvals$"))
+    application.add_handler(CallbackQueryHandler(library_update, pattern="^library_update$"))
+    application.add_handler(CallbackQueryHandler(library_reset_stats, pattern="^library_reset_stats$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_enable_confirm, pattern="^sub_enable$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_disable_confirm, pattern="^sub_disable$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_enable_yes, pattern="^sub_enable_yes$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_disable_yes, pattern="^sub_disable_yes$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_action_cancel, pattern="^sub_action_cancel$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_change_price, pattern="^sub_change_price$"))
+    application.add_handler(CallbackQueryHandler(handle_sub_set_price, pattern="^sub_price_"))
+    application.add_handler(CallbackQueryHandler(handle_sub_toggle_notif, pattern="^sub_toggle_notif$"))
+    application.add_handler(CallbackQueryHandler(handle_audio_enable, pattern="^audio_enable$"))
+    application.add_handler(CallbackQueryHandler(handle_audio_disable, pattern="^audio_disable$"))
+    application.add_handler(CallbackQueryHandler(handle_audio_preset, pattern="^audio_preset_"))
+    application.add_handler(CallbackQueryHandler(handle_audio_set_custom_limit, pattern="^audio_set_custom_limit$"))
+    application.add_handler(CallbackQueryHandler(handle_resolve_report, pattern="^resolve_report:"))
+    application.add_handler(CallbackQueryHandler(handle_confirm_resolve, pattern="^confirm_resolve:"))
+    application.add_handler(CallbackQueryHandler(handle_edit_time_limit, pattern="^edit_time_limit$"))
+    application.add_handler(CallbackQueryHandler(handle_edit_daily_limit, pattern="^edit_daily_limit$"))
+    application.add_handler(CallbackQueryHandler(handle_set_time_limit_preset, pattern=r"^set_limit_\d+$"))
+    application.add_handler(CallbackQueryHandler(handle_set_time_limit_preset, pattern=r"^set_limit_unlimited$"))
+    application.add_handler(CallbackQueryHandler(handle_set_time_limit_custom, pattern=r"^set_limit_custom$"))
+    application.add_handler(CallbackQueryHandler(show_cookie_status_detail, pattern="^cookie_status_detail$"))
+    application.add_handler(CallbackQueryHandler(handle_cookie_test_all, pattern="^cookie_test_all$"))
+    application.add_handler(CallbackQueryHandler(handle_cookie_test_stories, pattern="^cookie_test_stories$"))
+    application.add_handler(CallbackQueryHandler(show_cookie_encryption_info, pattern="^cookie_encryption_info$"))
+    application.add_handler(CallbackQueryHandler(handle_cookie_delete_all, pattern="^cookie_delete_all$"))
+    application.add_handler(CallbackQueryHandler(handle_upload_cookie_button, pattern="^upload_cookie_"))
+    application.add_handler(CallbackQueryHandler(broadcast_all_start, pattern="^broadcast_all$"))
+    application.add_handler(CallbackQueryHandler(broadcast_individual_start, pattern="^broadcast_individual$"))
 
     # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط - يأتي بعد handlers الأساسية)
     application.add_handler(admin_conv_handler)
