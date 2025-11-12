@@ -37,7 +37,7 @@ from handlers.notifications import (
     send_update_notification,
     announce_new_bot
 )
-from handlers.admin import admin_conv_handler
+from handlers.admin import admin_conv_handler, admin_command_simple
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
@@ -589,6 +589,9 @@ def main() -> None:
         pattern="^help$"
     ))
 
+    # 11.6. Handler لأمر /admin - معالج بسيط خارج ConversationHandler
+    application.add_handler(CommandHandler("admin", admin_command_simple))
+
     # 11.7. Handler لزر Admin Panel (قبل ConversationHandler للأولوية)
     from handlers.admin import handle_admin_panel_callback
     application.add_handler(CallbackQueryHandler(
@@ -596,7 +599,7 @@ def main() -> None:
         pattern="^admin_panel$"
     ))
 
-    # 12. Handler للوحة تحكم الأدمن (يشمل أمر /admin والأزرار الداخلية)
+    # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط)
     application.add_handler(admin_conv_handler)
 
     # 12.2. Handlers للأزرار الداخلية في لوحة الادمن (خارج المحادثة)
