@@ -10,15 +10,29 @@ logger = logging.getLogger(__name__)
 
 # الاتصال بقاعدة البيانات
 MONGODB_URI = os.getenv("MONGODB_URI")
-ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
 
-# Parse ADMIN_IDS safely
+# ✅ دعم كلا الصيغتين: ADMIN_ID (أدمن واحد) و ADMIN_IDS (عدة أدمن)
+ADMIN_ID_STR = os.getenv("ADMIN_ID", "")  # أدمن واحد
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")  # عدة أدمن
+
+# Parse ADMIN_IDS safely - يدعم الصيغتين
 try:
-    ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
+    ADMIN_IDS = []
+
+    # إذا كان ADMIN_IDS موجود، استخدمه
+    if ADMIN_IDS_STR:
+        ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip().isdigit()]
+    # إذا لم يكن موجود، استخدم ADMIN_ID
+    elif ADMIN_ID_STR and ADMIN_ID_STR.isdigit():
+        ADMIN_IDS = [int(ADMIN_ID_STR)]
+
     if not ADMIN_IDS:
         logger.warning("⚠️ No valid ADMIN_IDs found in .env. Admin functions will be disabled.")
+    else:
+        logger.info(f"✅ تم تحميل {len(ADMIN_IDS)} أدمن: {ADMIN_IDS}")
+
 except (ValueError, AttributeError) as e:
-    logger.error(f"❌ Failed to parse ADMIN_ID from .env: {e}")
+    logger.error(f"❌ Failed to parse ADMIN_ID/ADMIN_IDS from .env: {e}")
     ADMIN_IDS = []
 
 try:
