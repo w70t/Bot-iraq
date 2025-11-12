@@ -37,7 +37,7 @@ from handlers.notifications import (
     send_update_notification,
     announce_new_bot
 )
-from handlers.admin import admin_conv_handler, handle_admin_panel_callback
+from handlers.admin import admin_conv_handler
 from handlers.account import account_info, test_subscription
 from handlers.video_info import handle_video_message
 from handlers.referral import referral_command, handle_referral_callback
@@ -571,13 +571,7 @@ def main() -> None:
         pattern="^(refresh_referral_stats|copy_referral_)"
     ))
 
-    # 11.5. Handler لزر Admin Panel (Callback Query)
-    application.add_handler(CallbackQueryHandler(
-        handle_admin_panel_callback,
-        pattern="^admin_panel$"
-    ))
-
-    # 11.6. Handler لزر Help (Callback Query)
+    # 11.5. Handler لزر Help (Callback Query)
     application.add_handler(CallbackQueryHandler(
         handle_help,
         pattern="^help$"
