@@ -967,7 +967,7 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة المكتبات والمنصات مع دعم الكوكيز المتكامل (V5.1)"""
     query = update.callback_query
-    await query.answer()
+    await query.answer(cache_time=0)  # Stop spinner immediately
 
     # جلب إعدادات المكتبات
     from database import (
@@ -2780,11 +2780,26 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
             if cookie_file != platform.lower():
                 linked_info = f"\n🔗 مرتبط بـ: {cookie_file.capitalize()}"
 
+            # Check if this is soft validation for Facebook
+            validation_note = ""
+            if platform.lower() == 'facebook':
+                try:
+                    from pathlib import Path
+                    metadata_path = Path("cookies_encrypted") / f"{cookie_file}.json"
+                    if metadata_path.exists():
+                        import json
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                        if metadata.get('validation_type') == 'soft':
+                            validation_note = "\n\nℹ️ تم التحقق بأسلوب سريع (xs + c_user موجودة). في حال واجهت مشكلة لاحقًا سنعيد التحقق تلقائيًا."
+                except Exception:
+                    pass
+
             await status_msg.edit_text(
                 f"✅ **تم رفع كوكيز {platform.capitalize()} بنجاح!**\n\n"
                 f"📊 عدد الكوكيز: {cookie_count}\n"
                 f"🔐 التشفير: AES-256\n"
-                f"✅ الحالة: صالح ومُفعّل{linked_info}\n\n"
+                f"✅ الحالة: صالح ومُفعّل{linked_info}{validation_note}\n\n"
                 f"🎯 يمكنك الآن استخدام روابط {platform.capitalize()}",
                 parse_mode='Markdown'
             )
@@ -3082,6 +3097,7 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(set_target, pattern='^set_target_'),
             # إدارة المكتبات الجديدة
             CallbackQueryHandler(manage_libraries, pattern='^admin_libraries$'),
+            CallbackQueryHandler(manage_libraries, pattern='^manage_libraries$'),  # Back button from cookie upload
             CallbackQueryHandler(library_details, pattern='^library_details$'),
             CallbackQueryHandler(library_stats, pattern='^library_stats$'),
             CallbackQueryHandler(library_approvals, pattern='^library_approvals$'),
@@ -3189,5 +3205,6 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },
-    fallbacks=[CommandHandler('cancel', cancel)]
+    fallbacks=[CommandHandler('cancel', cancel)],
+    per_message=True  # Track multiple CallbackQueryHandler properly and prevent button spinner issues
 )
