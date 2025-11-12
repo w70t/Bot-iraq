@@ -26,7 +26,7 @@ COOKIE_LOG_FILE = Path("logs/cookie_events.log")
 
 # Test URLs for validation
 TEST_URLS = {
-    'instagram': 'https://www.instagram.com/stories/highlights/',
+    'instagram': 'https://www.instagram.com/',
     'facebook': [
         'https://www.facebook.com/me',
         'https://m.facebook.com/me',
