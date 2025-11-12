@@ -2634,213 +2634,174 @@ async def handle_upload_cookie_button(update: Update, context: ContextTypes.DEFA
 
 
 async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة رفع الكوكيز للمنصة المحددة (V5.2 - Auto Parse & Extract + Auto Detection)"""
+    """معالجة رفع الكوكيز للمنصة المحددة - FIXED VERSION
+    يدعم الملفات والنصوص الملصوقة + اكتشاف تلقائي قوي
+    """
     platform = context.user_data.get('cookie_upload_platform')
     auto_detect = False
 
     try:
         from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
 
+        # رسالة حالة أولية
         status_msg = await update.message.reply_text("⏳ جاري معالجة الكوكيز...")
 
-        # Handle file upload
+        # ==================== تحديد مصدر البيانات ====================
+
+        # حالة 1: ملف مرفق
         if update.message.document:
             file = await update.message.document.get_file()
             file_content = await file.download_as_bytearray()
             cookie_data = file_content.decode('utf-8')
-        # Handle text message (pasted cookies)
+        # حالة 2: نص مباشر (لصق)
         elif update.message.text and not update.message.text.startswith('/'):
             cookie_data = update.message.text
+            auto_detect = True
+        # حالة 3: لا توجد بيانات
         else:
-            await status_msg.edit_text("❌ يرجى إرسال ملف كوكيز أو لصق محتوى الملف")
-            return AWAITING_PLATFORM_COOKIE if platform else MAIN_MENU
+            await status_msg.edit_text(
+                "❌ يرجى إرسال ملف الكوكيز أو لصق محتواه مباشرة\n\n"
+                "💡 استخدم إضافة Cookie-Editor لتصدير الكوكيز"
+            )
+            return ConversationHandler.END
 
-        # Auto-detect platform if not manually selected (V5.3 - Auto Detection)
+        # ==================== الاكتشاف التلقائي ====================
+
+        # محاولة اكتشاف المنصة من محتوى الكوكيز
+        detected_platform = None
+        if auto_detect or not platform:
+            await status_msg.edit_text("🔍 جاري تحليل محتوى الكوكيز...")
+
+            # تحليل أولي للكشف عن المنصة
+            if "facebook.com" in cookie_data.lower():
+                detected_platform = "facebook"
+            elif "instagram.com" in cookie_data.lower():
+                detected_platform = "instagram"
+            elif "tiktok.com" in cookie_data.lower():
+                detected_platform = "tiktok"
+            elif "youtube.com" in cookie_data.lower():
+                detected_platform = "youtube"
+            elif "twitter.com" in cookie_data.lower() or "x.com" in cookie_data.lower():
+                detected_platform = "twitter"
+
+            if detected_platform:
+                platform = detected_platform
+                await status_msg.edit_text(f"✅ تم اكتشاف تلقائي: {platform.capitalize()}")
+
+        # التحقق من وجود المنصة
         if not platform:
-            # Check if this looks like Netscape cookie format
-            if "# Netscape HTTP Cookie File" in cookie_data or "facebook.com" in cookie_data or "instagram.com" in cookie_data or "tiktok.com" in cookie_data:
-                await status_msg.edit_text("🔍 تم اكتشاف كوكيز تلقائياً... جاري التحليل...")
-                auto_detect = True
-                logger.info("📦 Auto-detected Netscape cookie format in text message")
-            else:
-                await status_msg.edit_text("❌ خطأ: لم يتم تحديد المنصة. الرجاء المحاولة مرة أخرى.")
-                return MAIN_MENU
+            await status_msg.edit_text(
+                "❌ خطأ: لم يتم تحديد المنصة\n\n"
+                "💡 تأكد من أن ملف الكوكيز يحتوي على بيانات صحيحة"
+            )
+            return ConversationHandler.END
 
-        # Parse and validate Netscape cookies (V5.2)
-        if not auto_detect:
-            await status_msg.edit_text("🔍 جاري تحليل الكوكيز...")
+        # ==================== تحليل الكوكيز ====================
+
+        # تحليل تنسيق Netscape
+        await status_msg.edit_text("🔍 جاري تحليل تنسيق الكوكيز...")
 
         success, parsed_data, detected_platform, cookie_count = cookie_manager.parse_netscape_cookies(cookie_data)
 
-        # Use detected platform if auto-detecting
-        if auto_detect and detected_platform:
-            platform = detected_platform
-            logger.info(f"✅ Auto-detected platform: {platform}")
-
-        # Ensure platform is set before proceeding
-        if not platform:
-            await status_msg.edit_text(
-                "❌ فشل تحديد المنصة تلقائياً\n"
-                "الرجاء استخدام قائمة الإدارة لاختيار المنصة يدوياً"
-            )
-            return MAIN_MENU
-
-        # Get the actual cookie file name (handles linking)
-        cookie_file = PLATFORM_COOKIE_LINKS.get(platform.lower(), platform.lower())
-
-        if cookie_file is None:
-            await status_msg.edit_text(
-                f"❌ منصة {platform.capitalize()} لا تحتاج إلى كوكيز"
-            )
-            return MAIN_MENU
-
+        # التحقق من نجاح التحليل
         if not success or not parsed_data:
+            error_details = ""
+            if "No valid cookies" in str(parsed_data):
+                error_details = "❌ لم يتم العثور على كوكيز صالحة"
+            elif "Expired cookies" in str(parsed_data):
+                error_details = "⚠️ جميع الكوكيز منتهية الصلاحية"
+            else:
+                error_details = "❌ تنسيق غير صحيح أو بيانات تالفة"
+
             await status_msg.edit_text(
                 f"❌ فشل تحليل الكوكيز\n\n"
-                f"تأكد من:\n"
-                f"• التنسيق: Netscape HTTP Cookie File\n"
-                f"• الكوكيز غير منتهية الصلاحية\n"
-                f"• وجود cookies صالحة في النص\n\n"
-                f"💡 استخدم إضافة Cookie-Editor لتصدير الكوكيز"
+                f"{error_details}\n\n"
+                f"📋 المتطلبات:\n"
+                f"• تنسيق Netscape HTTP Cookie File\n"
+                f"• كوكيز غير منتهية\n"
+                f"• حقل .domain مطلوب\n\n"
+                f"💡 استخدم: Cookie-Editor أو Get cookies.txt"
             )
+
+            # إعادة تعيين الحالة
             context.user_data.pop('cookie_upload_platform', None)
+            return ConversationHandler.END
 
-            # Provide navigation back to admin panel
-            await update.message.reply_text(
-                "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
-                ]])
-            )
-            return MAIN_MENU
+        # ==================== حفظ الكوكيز ====================
 
-        # Verify detected platform matches selected platform
-        platform_match = ""
-        if detected_platform:
-            # Check if detected platform uses same cookie file
-            detected_cookie_file = PLATFORM_COOKIE_LINKS.get(detected_platform.lower())
-            if detected_cookie_file and detected_cookie_file != cookie_file:
-                await status_msg.edit_text(
-                    f"⚠️ **تحذير: تعارض في المنصة**\n\n"
-                    f"المنصة المحددة: {platform.capitalize()}\n"
-                    f"المنصة المكتشفة: {detected_platform.capitalize()}\n\n"
-                    f"الكوكيز تبدو أنها من {detected_platform.capitalize()}\n"
-                    f"لكنك اخترت {platform.capitalize()}\n\n"
-                    f"❌ الرجاء اختيار المنصة الصحيحة"
-                )
-                context.user_data.pop('cookie_upload_platform', None)
-
-                # Provide navigation back to admin panel
-                await update.message.reply_text(
-                    "🔄 تم إعادة تعيين الحالة. يمكنك اختيار المنصة الصحيحة.",
-                    reply_markup=InlineKeyboardMarkup([[
-                        InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
-                    ]])
-                )
-                return MAIN_MENU
-
-            platform_match = f" ({detected_platform.capitalize()})"
-
-        # Encrypt the parsed cookies
-        await status_msg.edit_text(
-            f"✅ تم تحليل {cookie_count} كوكيز{platform_match}\n"
-            f"🔐 جاري التشفير..."
+        # حفظ الكوكيز المشفرة
+        save_result = cookie_manager.save_encrypted_cookies(
+            platform=platform,
+            cookie_data=parsed_data,
+            validate=True
         )
 
-        # Convert to bytes and encrypt
-        cookie_bytes = parsed_data.encode('utf-8')
-        encrypt_success = cookie_manager.encrypt_cookie_file(cookie_file, cookie_bytes)
-
-        if not encrypt_success:
-            await status_msg.edit_text(
-                f"❌ فشل تشفير الكوكيز\n"
-                f"حدث خطأ أثناء عملية التشفير"
-            )
-            context.user_data.pop('cookie_upload_platform', None)
-
-            # Provide navigation back to admin panel
-            await update.message.reply_text(
-                "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
-                ]])
-            )
-            return MAIN_MENU
-
-        # Validate cookies
-        await status_msg.edit_text(
-            f"🔐 تم التشفير بنجاح\n"
-            f"⏳ جاري التحقق من الصلاحية..."
-        )
-
-        is_valid = await cookie_manager.validate_cookies(cookie_file)
-
-        if is_valid:
-            linked_info = ""
-            if cookie_file != platform.lower():
-                linked_info = f"\n🔗 مرتبط بـ: {cookie_file.capitalize()}"
-
-            # Check if this is soft validation for Facebook
-            validation_note = ""
-            if platform.lower() == 'facebook':
-                try:
-                    from pathlib import Path
-                    metadata_path = Path("cookies_encrypted") / f"{cookie_file}.json"
-                    if metadata_path.exists():
-                        import json
-                        with open(metadata_path, 'r') as f:
-                            metadata = json.load(f)
-                        if metadata.get('validation_type') == 'soft':
-                            validation_note = "\n\nℹ️ تم التحقق بأسلوب سريع (xs + c_user موجودة). في حال واجهت مشكلة لاحقًا سنعيد التحقق تلقائيًا."
-                except Exception:
-                    pass
+        if save_result['success']:
+            # نجاح
+            platform_names = {
+                'facebook': 'Facebook',
+                'instagram': 'Instagram',
+                'tiktok': 'TikTok',
+                'youtube': 'YouTube',
+                'twitter': 'Twitter/X'
+            }
+            platform_name = platform_names.get(platform, platform.capitalize())
 
             await status_msg.edit_text(
-                f"✅ **تم رفع كوكيز {platform.capitalize()} بنجاح!**\n\n"
-                f"📊 عدد الكوكيز: {cookie_count}\n"
-                f"🔐 التشفير: AES-256\n"
-                f"✅ الحالة: صالح ومُفعّل{linked_info}{validation_note}\n\n"
-                f"🎯 يمكنك الآن استخدام روابط {platform.capitalize()}",
-                parse_mode='Markdown'
+                f"✅ تم حفظ كوكيز {platform_name} بنجاح!\n\n"
+                f"📊 المعلومات:\n"
+                f"• عدد الكوكيز: {cookie_count}\n"
+                f"• المنصة: {platform_name}\n"
+                f"• التشفير: AES-256\n"
+                f"• حالة التحقق: {'✅ صالحة' if save_result.get('validated') else '⚠️ غير مفحوصة'}\n\n"
+                f"💡 اختبار الآن؟ استخدم زر 'اختبار الكوكيز'"
             )
+
+            # تسجيل الحدث
+            logger.info(f"✅ Cookies saved for {platform}: {cookie_count} cookies")
+
         else:
+            # فشل
             await status_msg.edit_text(
-                f"⚠️ **تم رفع الكوكيز ولكن فشل التحقق**\n\n"
-                f"📊 عدد الكوكيز: {cookie_count}\n"
-                f"🔐 تم التشفير والحفظ\n"
-                f"❌ قد تكون الكوكيز منتهية الصلاحية\n\n"
-                f"جرّب تصدير كوكيز جديدة من المتصفح",
-                parse_mode='Markdown'
+                f"❌ فشل حفظ الكوكيز\n\n"
+                f"الخطأ: {save_result.get('error', 'خطأ غير معروف')}\n\n"
+                f"💡 حاول مرة أخرى أو تأكد من صلاحية الكوكيز"
             )
+            logger.error(f"❌ Failed to save cookies: {save_result.get('error')}")
 
-        # Clear user data
+        # ==================== التنظيف ====================
+
+        # إعادة تعيين حالة المنصة
         context.user_data.pop('cookie_upload_platform', None)
 
-        # Return to platform management
+        # أزرار التنقل
+        keyboard = [
+            [InlineKeyboardButton("🔄 إضافة كوكيز أخرى", callback_data=f"upload_cookie_{platform}")],
+            [InlineKeyboardButton("🔙 إدارة المنصات", callback_data="admin_libraries")],
+            [InlineKeyboardButton("🏠 لوحة التحكم", callback_data="admin_main")]
+        ]
+
         await update.message.reply_text(
-            "✅ العودة إلى لوحة إدارة المنصات",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
-            ]])
+            "اختر إجراءً تالياً:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-        return MAIN_MENU
+        return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error uploading platform cookie: {e}")
+        logger.error(f"❌ Error in handle_platform_cookie_upload: {e}")
         await update.message.reply_text(
-            f"❌ حدث خطأ أثناء رفع الكوكيز:\n{str(e)}"
+            f"❌ خطأ غير متوقع: {str(e)}\n\n"
+            f"💡 تأكد من:\n"
+            f"• تنسيق الكوكيز صحيح\n"
+            f"• الملف غير تالٍ\n"
+            f"• المنصة محددة بشكل صحيح"
         )
+
+        # إعادة تعيين الحالة في حال الخطأ
         context.user_data.pop('cookie_upload_platform', None)
 
-        # Provide navigation back to admin panel
-        await update.message.reply_text(
-            "🔄 تم إعادة تعيين الحالة. يمكنك المحاولة مرة أخرى.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 العودة للمنصات", callback_data="manage_libraries")
-            ]])
-        )
-        return MAIN_MENU
+        return ConversationHandler.END
 
 
 async def cancel_platform_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
