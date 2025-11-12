@@ -46,11 +46,21 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
 
     # التحقق من صلاحيات الأدمن
     if not is_admin(user_id):
-        await query.answer("🚫 You don't have permission to access this section.", show_alert=True)
+        # الحصول على لغة المستخدم
+        from database import get_user_language
+        lang = get_user_language(user_id)
+
+        # رسالة بحسب اللغة
+        error_message = (
+            "🔒 عذراً، هذا الزر مخصص للمدراء فقط!"
+            if lang == 'ar' else
+            "🔒 Sorry, this button is for admins only!"
+        )
+        await query.answer(error_message, show_alert=True)
         return
 
     # إذا كان أدمن، عرض لوحة التحكم
-    await query.answer()
+    # لا حاجة لاستدعاء query.answer() هنا لأن admin_panel ستقوم بذلك
     return await admin_panel(update, context)
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
