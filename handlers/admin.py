@@ -130,11 +130,14 @@ async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
+        # الدخول إلى ConversationHandler لكي تعمل الأزرار
+        return MAIN_MENU
     except Exception as e:
         logger.error(f"❌ خطأ في معالج أمر /admin: {e}")
         await update.message.reply_text(
             "❌ حدث خطأ أثناء عرض لوحة التحكم. الرجاء المحاولة مرة أخرى."
         )
+        return ConversationHandler.END
 
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض لوحة التحكم الرئيسية"""
@@ -3134,6 +3137,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ConversationHandler للوحة التحكم
 admin_conv_handler = ConversationHandler(
     entry_points=[
+        CommandHandler('admin', admin_command_handler),  # معالج أمر /admin
         CallbackQueryHandler(handle_admin_panel_callback, pattern='^admin_panel$')  # Support button click with permission check
     ],
     states={
