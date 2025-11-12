@@ -621,6 +621,11 @@ def main() -> None:
         show_cookie_encryption_info, handle_cookie_delete_all,
         handle_upload_cookie_button, broadcast_all_start, broadcast_individual_start
     )
+    # استيراد handlers من cookie_manager
+    from handlers.cookie_manager import (
+        confirm_delete_all_cookies_callback,
+        cancel_delete_cookies_callback
+    )
 
     # إضافة handlers للأزرار الرئيسية
     application.add_handler(CallbackQueryHandler(show_statistics, pattern="^admin_stats$"))
@@ -683,6 +688,10 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_upload_cookie_button, pattern="^upload_cookie_"))
     application.add_handler(CallbackQueryHandler(broadcast_all_start, pattern="^broadcast_all$"))
     application.add_handler(CallbackQueryHandler(broadcast_individual_start, pattern="^broadcast_individual$"))
+
+    # Handlers لأزرار التأكيد في Cookies
+    application.add_handler(CallbackQueryHandler(confirm_delete_all_cookies_callback, pattern="^confirm_delete_all_cookies$"))
+    application.add_handler(CallbackQueryHandler(cancel_delete_cookies_callback, pattern="^cancel_delete_cookies$"))
 
     # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط - يأتي بعد handlers الأساسية)
     application.add_handler(admin_conv_handler)
