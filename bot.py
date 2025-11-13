@@ -598,6 +598,27 @@ def main() -> None:
     # 11.6. Handler لأمر /admin موجود داخل admin_conv_handler كـ entry_point
     # لا نحتاج معالج خارجي هنا لتجنب التعارض
 
+    # 11.7. Debug: معالج عام لتتبع جميع CallbackQuery
+    async def debug_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالج لتتبع جميع الـ callbacks للتصحيح"""
+        if update.callback_query:
+            logger.info(f"🔍 [DEBUG_CALLBACK] Received callback: {update.callback_query.data}")
+            logger.info(f"🔍 [DEBUG_CALLBACK] From user: {update.effective_user.id}")
+            logger.info(f"🔍 [DEBUG_CALLBACK] Message ID: {update.callback_query.message.message_id if update.callback_query.message else 'None'}")
+
+    # تسجيل معالج التتبع (في بداية handlers لمراقبة كل شيء)
+    application.add_handler(CallbackQueryHandler(debug_callback_handler), group=-1)
+
+    # 11.7.2. Debug: معالج عام لتتبع جميع الأوامر
+    async def debug_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالج لتتبع جميع الأوامر للتصحيح"""
+        if update.message and update.message.text and update.message.text.startswith('/'):
+            logger.info(f"🔍 [DEBUG_COMMAND] Received command: {update.message.text}")
+            logger.info(f"🔍 [DEBUG_COMMAND] From user: {update.effective_user.id}")
+
+    # تسجيل معالج تتبع الأوامر
+    application.add_handler(MessageHandler(filters.COMMAND, debug_command_handler), group=-1)
+
     # 11.8. Handlers للأزرار الداخلية في لوحة الادمن (قبل ConversationHandler للأولوية)
     # ملاحظة: معظم هذه الدوال الآن داخل admin_conv_handler
     # استيراد handlers من cookie_manager
@@ -615,7 +636,13 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(cancel_delete_cookies_callback, pattern="^cancel_delete_cookies$"))
 
     # 12. Handler للوحة تحكم الأدمن (للحالات المعقدة فقط - يأتي بعد handlers الأساسية)
+    logger.info("=" * 50)
+    logger.info("🔧 [BOT] Registering admin_conv_handler")
+    logger.info(f"🔧 [BOT] Handler type: {type(admin_conv_handler)}")
+    logger.info(f"🔧 [BOT] Entry points: {admin_conv_handler.entry_points}")
     application.add_handler(admin_conv_handler)
+    logger.info("✅ [BOT] admin_conv_handler registered successfully")
+    logger.info("=" * 50)
 
     # 12.5. Playlist URL handler (before general download handler)
     async def playlist_or_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
