@@ -598,21 +598,6 @@ def main() -> None:
     # 11.6. Handler لأمر /admin - معالج بسيط خارج ConversationHandler
     application.add_handler(CommandHandler("admin", admin_command_simple))
 
-    # 11.7. Handler لزر Admin Panel (قبل ConversationHandler للأولوية)
-    # استيراد معالج لوحة الأدمن إذا كان موجوداً
-    try:
-        from handlers.admin.admin import handle_admin_panel_callback
-    except ImportError:
-        # إذا لم يكن موجوداً، نستخدم معالج بديل
-        async def handle_admin_panel_callback(update, context):
-            query = update.callback_query
-            await query.answer()
-            await query.message.reply_text("لوحة الأدمن قيد التطوير")
-    application.add_handler(CallbackQueryHandler(
-        handle_admin_panel_callback,
-        pattern="^admin_panel$"
-    ))
-
     # 11.8. Handlers للأزرار الداخلية في لوحة الادمن (قبل ConversationHandler للأولوية)
     # ملاحظة: معظم هذه الدوال الآن داخل admin_conv_handler
     # استيراد handlers من cookie_manager
