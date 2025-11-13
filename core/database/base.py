@@ -1,11 +1,10 @@
 import os
-import logging
 from pymongo import MongoClient
 from datetime import datetime
 
 # استخدام logger من config
 try:
-    from config import logger
+    from config.logger import get_logger
 except ImportError:
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
     logger = logging.getLogger(__name__)

@@ -4,7 +4,7 @@ from .base import users_collection
 
 # استخدام logger من config
 try:
-    from config import logger
+    from config.logger import get_logger
 except ImportError:
     import logging
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
