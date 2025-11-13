@@ -3391,6 +3391,8 @@ admin_conv_handler = ConversationHandler(
     states={
         MAIN_MENU: [
             CallbackQueryHandler(admin_panel, pattern='^admin$'),  # Handle "Admin" button clicks
+            CallbackQueryHandler(admin_panel, pattern='^admin_panel$'),  # Handle "Admin Panel" button clicks
+            CallbackQueryHandler(admin_panel, pattern='^admin_main$'),  # Handle "Back to main" button clicks
             CallbackQueryHandler(show_statistics, pattern='^admin_stats$'),
             CallbackQueryHandler(upgrade_user_start, pattern='^admin_upgrade$'),
             CallbackQueryHandler(admin_add_subscription_start, pattern='^admin_add_subscription$'),
