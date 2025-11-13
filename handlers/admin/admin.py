@@ -1282,6 +1282,8 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
     # فحص حالة الكوكيز
     cookie_status = "❌ غير موجودة"
     cookie_age = "N/A"
+    cookie_count = 0
+    cookie_warning = ""
 
     try:
         from handlers.cookie_manager import cookie_manager
@@ -1289,6 +1291,7 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
 
         if cookie_info.get('exists', False):
             age_days = cookie_info.get('age_days', 0)
+            cookie_count = cookie_info.get('cookie_count', 0)
             cookie_age = f"{age_days} يوم"
 
             if age_days < 7:
@@ -1297,6 +1300,12 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
                 cookie_status = "⚠️ قديمة قليلاً"
             else:
                 cookie_status = "🔴 قديمة جداً"
+
+            # ⭐ تحذير إذا كانت الكوكيز قليلة
+            if cookie_count < 5:
+                cookie_warning = f"\n⚠️ **تحذير:** عدد الكوكيز قليل جداً ({cookie_count})\n💡 Instagram Story يحتاج على الأقل 10-15 كوكيز\n"
+            elif cookie_count < 10:
+                cookie_warning = f"\n⚠️ **ملاحظة:** عدد الكوكيز ({cookie_count}) قد لا يكفي للستوري\n"
     except Exception as e:
         logger.error(f"خطأ في فحص كوكيز {platform}: {e}")
 
@@ -1306,7 +1315,9 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
     message_text = (
         f"{emoji} **{name}**\n\n"
         f"🍪 **حالة الكوكيز:** {cookie_status}\n"
-        f"📅 **العمر:** {cookie_age}\n\n"
+        f"📅 **العمر:** {cookie_age}\n"
+        f"🔢 **عدد الكوكيز:** {cookie_count}\n"
+        f"{cookie_warning}\n"
         f"اختر الإجراء المطلوب:"
     )
 
