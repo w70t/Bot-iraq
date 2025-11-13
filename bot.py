@@ -595,8 +595,8 @@ def main() -> None:
         pattern="^help$"
     ))
 
-    # 11.6. Handler لأمر /admin - معالج بسيط خارج ConversationHandler
-    application.add_handler(CommandHandler("admin", admin_command_simple))
+    # 11.6. Handler لأمر /admin موجود داخل admin_conv_handler كـ entry_point
+    # لا نحتاج معالج خارجي هنا لتجنب التعارض
 
     # 11.8. Handlers للأزرار الداخلية في لوحة الادمن (قبل ConversationHandler للأولوية)
     # ملاحظة: معظم هذه الدوال الآن داخل admin_conv_handler
