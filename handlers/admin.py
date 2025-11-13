@@ -3128,9 +3128,12 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text
     broadcast_type = context.user_data.get('broadcast_type', 'all')
 
+    logger.info(f"📢 بدء إرسال بث جماعي - النوع: {broadcast_type}, الرسالة: {message_text[:50]}")
+
     if broadcast_type == 'all':
         # إرسال لجميع المستخدمين
         all_users = get_all_users()
+        logger.info(f"📊 عدد المستخدمين: {len(all_users)}")
 
         await update.message.reply_text(
             f"📤 جاري الإرسال إلى {len(all_users)} مستخدم..."
