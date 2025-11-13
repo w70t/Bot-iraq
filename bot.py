@@ -599,7 +599,15 @@ def main() -> None:
     application.add_handler(CommandHandler("admin", admin_command_simple))
 
     # 11.7. Handler لزر Admin Panel (قبل ConversationHandler للأولوية)
-    from handlers.admin import handle_admin_panel_callback
+    # استيراد معالج لوحة الأدمن إذا كان موجوداً
+    try:
+        from handlers.admin.admin import handle_admin_panel_callback
+    except ImportError:
+        # إذا لم يكن موجوداً، نستخدم معالج بديل
+        async def handle_admin_panel_callback(update, context):
+            query = update.callback_query
+            await query.answer()
+            await query.message.reply_text("لوحة الأدمن قيد التطوير")
     application.add_handler(CallbackQueryHandler(
         handle_admin_panel_callback,
         pattern="^admin_panel$"
