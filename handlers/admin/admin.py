@@ -177,102 +177,134 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
 
 async def admin_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج بسيط لأمر /admin - entry point في ConversationHandler"""
-    user_id = update.effective_user.id
+    try:
+        user_id = update.effective_user.id
 
-    logger.info(f"🔍 Admin command received from user {user_id}")
+        logger.info(f"🔍 [ADMIN_CMD_HANDLER] Admin command received from user {user_id}")
+        logger.info(f"🔍 [ADMIN_CMD_HANDLER] Update type: {type(update)}")
+        logger.info(f"🔍 [ADMIN_CMD_HANDLER] Has message: {update.message is not None}")
+        logger.info(f"🔍 [ADMIN_CMD_HANDLER] Has callback_query: {update.callback_query is not None}")
 
-    # التحقق من صلاحيات الأدمن
-    if not is_admin(user_id):
-        # الحصول على لغة المستخدم
-        from database import get_user_language
-        lang = get_user_language(user_id)
-        error_msg = (
-            "⛔ عذراً، هذا الأمر مخصص للمدراء فقط"
-            if lang == 'ar' else
-            "⛔ Sorry, this command is for admins only"
-        )
-        logger.info(f"❌ User {user_id} is not admin - access denied")
-        await update.message.reply_text(error_msg)
-        return ConversationHandler.END
-
-    # إذا كان أدمن، استدعي admin_panel
-    logger.info(f"✅ User {user_id} is admin - showing admin panel")
-    return await admin_panel(update, context)
-
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض لوحة التحكم الرئيسية"""
-    user_id = update.effective_user.id
-
-    logger.info(f"📋 Admin panel called by user {user_id}")
-
-    # ✅ فحص صلاحيات الأدمن
-    if not is_admin(user_id):
-        error_msg = "⛔ عذراً، هذا الأمر مخصص للمدراء فقط"
-        if update.callback_query:
-            await update.callback_query.answer(error_msg, show_alert=True)
-            return ConversationHandler.END
-        else:
+        # التحقق من صلاحيات الأدمن
+        if not is_admin(user_id):
+            # الحصول على لغة المستخدم
+            from database import get_user_language
+            lang = get_user_language(user_id)
+            error_msg = (
+                "⛔ عذراً، هذا الأمر مخصص للمدراء فقط"
+                if lang == 'ar' else
+                "⛔ Sorry, this command is for admins only"
+            )
+            logger.info(f"❌ [ADMIN_CMD_HANDLER] User {user_id} is not admin - access denied")
             await update.message.reply_text(error_msg)
             return ConversationHandler.END
 
-    # جلب حالة اللوجو
-    from database import is_logo_enabled
-    logo_status = is_logo_enabled()
-    logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
-    
-    # جلب حالة المكتبات
-    from database import get_allowed_platforms, get_library_settings
-    settings = get_library_settings()
-    allowed_platforms = get_allowed_platforms()
-    # ⭐ تحديث العدد الإجمالي للمنصات المدعومة
-    total_platforms = 10  # YouTube, Facebook, Instagram, TikTok, Pinterest, Twitter, Reddit, Vimeo, Dailymotion, Twitch
-    enabled_platforms = len(allowed_platforms)
-    library_status = f"{enabled_platforms}/{total_platforms} منصات"
+        # إذا كان أدمن، استدعي admin_panel
+        logger.info(f"✅ [ADMIN_CMD_HANDLER] User {user_id} is admin - calling admin_panel")
+        result = await admin_panel(update, context)
+        logger.info(f"✅ [ADMIN_CMD_HANDLER] admin_panel returned: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"❌ [ADMIN_CMD_HANDLER] CRITICAL ERROR: {e}", exc_info=True)
+        if update.message:
+            await update.message.reply_text(f"❌ خطأ حرج: {e}")
+        return ConversationHandler.END
 
-    # جلب حالة الاشتراك
-    sub_enabled = is_subscription_enabled()
-    sub_status = "✅" if sub_enabled else "🚫"
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة التحكم الرئيسية"""
+    try:
+        user_id = update.effective_user.id
 
+        logger.info(f"📋 [ADMIN_PANEL] Called by user {user_id}")
+        logger.info(f"📋 [ADMIN_PANEL] Update type: {type(update)}")
+        logger.info(f"📋 [ADMIN_PANEL] Has message: {update.message is not None}")
+        logger.info(f"📋 [ADMIN_PANEL] Has callback_query: {update.callback_query is not None}")
 
-    keyboard = [
-        [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
-        [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
-        [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
-        [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
-        [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
-        [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
-        [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
-        [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
-        [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
-        [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
-        [InlineKeyboardButton("❌ إغلاق", callback_data="admin_close")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    message_text = (
-        "🔐 **لوحة تحكم المدير**\n\n"
-        "اختر الإجراء المطلوب:"
-    )
-    
-    if update.callback_query:
-        logger.info(f"📲 Sending admin panel via callback_query edit")
-        await update.callback_query.answer(cache_time=0)  # Stop spinner immediately
-        await update.callback_query.edit_message_text(
-            message_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
+        if update.callback_query:
+            logger.info(f"📋 [ADMIN_PANEL] Callback data: {update.callback_query.data}")
+
+        # ✅ فحص صلاحيات الأدمن
+        logger.info(f"📋 [ADMIN_PANEL] Checking admin privileges for user {user_id}")
+        if not is_admin(user_id):
+            logger.warning(f"⚠️ [ADMIN_PANEL] User {user_id} is not admin!")
+            error_msg = "⛔ عذراً، هذا الأمر مخصص للمدراء فقط"
+            if update.callback_query:
+                await update.callback_query.answer(error_msg, show_alert=True)
+                return ConversationHandler.END
+            else:
+                await update.message.reply_text(error_msg)
+                return ConversationHandler.END
+
+        logger.info(f"✅ [ADMIN_PANEL] User {user_id} is admin - proceeding")
+
+        # جلب حالة اللوجو
+        logger.info(f"📋 [ADMIN_PANEL] Fetching logo status")
+        from database import is_logo_enabled
+        logo_status = is_logo_enabled()
+        logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
+
+        # جلب حالة المكتبات
+        logger.info(f"📋 [ADMIN_PANEL] Fetching library settings")
+        from database import get_allowed_platforms, get_library_settings
+        settings = get_library_settings()
+        allowed_platforms = get_allowed_platforms()
+        # ⭐ تحديث العدد الإجمالي للمنصات المدعومة
+        total_platforms = 10  # YouTube, Facebook, Instagram, TikTok, Pinterest, Twitter, Reddit, Vimeo, Dailymotion, Twitch
+        enabled_platforms = len(allowed_platforms)
+        library_status = f"{enabled_platforms}/{total_platforms} منصات"
+
+        # جلب حالة الاشتراك
+        logger.info(f"📋 [ADMIN_PANEL] Fetching subscription status")
+        sub_enabled = is_subscription_enabled()
+        sub_status = "✅" if sub_enabled else "🚫"
+
+        logger.info(f"📋 [ADMIN_PANEL] Building keyboard")
+        keyboard = [
+            [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
+            [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
+            [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
+            [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
+            [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
+            [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
+            [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+            [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
+            [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
+            [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
+            [InlineKeyboardButton("❌ إغلاق", callback_data="admin_close")]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        message_text = (
+            "🔐 **لوحة تحكم المدير**\n\n"
+            "اختر الإجراء المطلوب:"
         )
-    else:
-        logger.info(f"📨 Sending admin panel via message reply")
-        await update.message.reply_text(
-            message_text,
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
 
-    logger.info(f"✅ Admin panel sent successfully, entering MAIN_MENU state")
-    return MAIN_MENU
+        if update.callback_query:
+            logger.info(f"📲 [ADMIN_PANEL] Sending via callback_query edit")
+            await update.callback_query.answer(cache_time=0)  # Stop spinner immediately
+            await update.callback_query.edit_message_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        else:
+            logger.info(f"📨 [ADMIN_PANEL] Sending via message reply")
+            await update.message.reply_text(
+                message_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+
+        logger.info(f"✅ [ADMIN_PANEL] Sent successfully, returning MAIN_MENU state")
+        return MAIN_MENU
+    except Exception as e:
+        logger.error(f"❌ [ADMIN_PANEL] CRITICAL ERROR: {e}", exc_info=True)
+        if update.callback_query:
+            await update.callback_query.answer(f"❌ خطأ: {e}", show_alert=True)
+        elif update.message:
+            await update.message.reply_text(f"❌ خطأ: {e}")
+        return ConversationHandler.END
 
 async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض الإحصائيات"""
