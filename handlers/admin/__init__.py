@@ -18,9 +18,22 @@ except ImportError:
         'admin_command_simple'
     ]
 
-# استيراد handle_admin_panel_callback إذا كان موجوداً
+# استيراد الدوال الإضافية من admin.py
 try:
-    from .admin import handle_admin_panel_callback
-    __all__.append('handle_admin_panel_callback')
-except ImportError:
+    from .admin import (
+        handle_admin_panel_callback,
+        show_statistics,
+        handle_user_management,
+        handle_broadcast_message,
+        handle_settings_menu
+    )
+    __all__.extend([
+        'handle_admin_panel_callback',
+        'show_statistics',
+        'handle_user_management',
+        'handle_broadcast_message',
+        'handle_settings_menu'
+    ])
+except ImportError as e:
+    # إذا لم تكن الدالة موجودة، نتجاهلها
     pass
