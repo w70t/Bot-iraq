@@ -520,11 +520,40 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
     url = pending_data['url']
     info_dict = pending_data['info']
 
+    # === فحص مدة الفيديو لجميع الأنواع (صوت وفيديو) ===
+    user_id = query.from_user.id
+    from database import is_subscribed, is_admin, is_subscription_enabled, get_free_time_limit
+
+    duration_seconds = info_dict.get('duration', 0)
+
+    # فحص حد المدة الزمنية (للمستخدمين غير المشتركين وغير الأدمن)
+    subscription_enabled = is_subscription_enabled()
+    if subscription_enabled and not is_subscribed(user_id) and not is_admin(user_id):
+        if duration_seconds > 0:
+            duration_minutes = duration_seconds / 60
+            time_limit_minutes = get_free_time_limit()
+
+            # -1 يعني غير محدود
+            if time_limit_minutes != -1 and duration_minutes > time_limit_minutes:
+                keyboard = [[InlineKeyboardButton(
+                    "⭐ اشترك في VIP للتحميل غير المحدود",
+                    url="https://instagram.com/7kmmy"
+                )]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
+                await query.edit_message_text(
+                    f"🚫 **لا يمكنك تحميل مقاطع أطول من {time_limit_minutes} دقيقة!**\n\n"
+                    f"⏱️ مدة المقطع: {duration_minutes:.1f} دقيقة\n"
+                    f"🔒 الحد المسموح: {time_limit_minutes} دقيقة\n\n"
+                    f"💎 **اشترك في VIP للحصول على تحميل غير محدود!**",
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
+                return
+
     # التحقق من مدة الصوتيات إذا اختار المستخدم "صوت فقط"
     if quality_choice == 'audio':
-        user_id = query.from_user.id
-
-        from database import is_audio_enabled, is_subscribed, is_admin, is_subscription_enabled, get_free_time_limit
+        from database import is_audio_enabled
 
         # التحقق من تفعيل الصوتيات
         if not is_audio_enabled():
@@ -1075,9 +1104,19 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     is_subscribed_user = is_subscribed(user_id)
     config = get_config()
     
+    # اختيار حكمة عشوائية للعرض في رسالة البداية
+    import random
+    random_quote = random.choice(ANIME_QUOTES)
+
     processing_message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="📥 بدء التحميل...\n\n⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜ 0%"
+        text=(
+            "📥 **جاري التحضير...**\n\n"
+            "⏳ الرجاء الانتظار...\n\n"
+            f"💭 {random_quote['ar']}\n"
+            f"💬 {random_quote['en']}"
+        ),
+        parse_mode='Markdown'
     )
     
     new_filepath = None
