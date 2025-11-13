@@ -15,8 +15,19 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# استيراد المكونات
-from handlers.start import start, select_language, handle_menu_buttons
+# استيراد المكونات من الهيكل الجديد
+from handlers.user import (
+    start,
+    select_language,
+    handle_menu_buttons,
+    account_info,
+    test_subscription,
+    referral_command,
+    handle_referral_callback,
+    show_support_message,
+    show_qr_code,
+    support_back
+)
 from handlers.download import (
     handle_download,
     handle_quality_selection,
@@ -27,8 +38,17 @@ from handlers.download import (
     handle_batch_quality_choice,
     toggle_video_selection,
     proceed_to_quality_selection,
-    is_playlist_url
+    is_playlist_url,
+    handle_multi_download,
+    show_mode_selection,
+    show_quality_selection as show_multi_quality_selection,
+    show_audio_format_selection,
+    download_videos,
+    download_audio,
+    handle_download_cancel,
+    handle_video_message
 )
+from handlers.admin import admin_conv_handler, admin_command_simple
 from handlers.general import handle_reactive_response
 from handlers.notifications import (
     send_startup_notification,
@@ -36,20 +56,6 @@ from handlers.notifications import (
     send_error_notification,
     send_update_notification,
     announce_new_bot
-)
-from handlers.admin import admin_conv_handler, admin_command_simple
-from handlers.account import account_info, test_subscription
-from handlers.video_info import handle_video_message
-from handlers.referral import referral_command, handle_referral_callback
-from handlers.support_handler import show_support_message, show_qr_code, support_back
-from handlers.multi_download_handler import (
-    handle_multi_download,
-    show_mode_selection,
-    show_quality_selection as show_multi_quality_selection,
-    show_audio_format_selection,
-    download_videos,
-    download_audio,
-    handle_download_cancel
 )
 from utils import get_message, escape_markdown, get_config, load_config, setup_bot_menu
 from database import init_db, update_user_interaction

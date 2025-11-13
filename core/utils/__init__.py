@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
 """
-Compatibility Layer for utils.py
-طبقة التوافق لملف utils.py - يستورد من الـ modules الجديدة
-
-⚠️ هذا الملف موجود فقط للتوافق مع الكود القديم
-    يرجى استخدام الاستيرادات المباشرة من core.utils و core.media
+Core Utilities Package
+حزمة الأدوات الأساسية
 """
 
-# ==================== Import from config ====================
-from config.messages import get_message
-from config.settings import get_config
-from config.logger import get_logger
-
-# ==================== Import from core.utils ====================
-from core.utils import (
-    # Validators
+# ==================== Validators ====================
+from .validators import (
     validate_url,
     validate_user_id,
     validate_days,
+)
 
-    # Formatters
+# ==================== Formatters ====================
+from .formatters import (
     format_file_size,
     format_duration,
     escape_markdown,
     clean_filename,
+)
 
+# ==================== Helpers ====================
+from .helpers import (
     # Config & Messages
     load_messages,
     load_config,
+    get_message,
+    get_config,
     MESSAGES,
     CONFIG,
 
@@ -66,25 +64,7 @@ from core.utils import (
     cleanup_old_files,
 )
 
-# ==================== Import from core.media ====================
-from core.media import (
-    # Watermark
-    get_logo_overlay_position,
-    apply_simple_watermark,
-    apply_animated_watermark,
-    apply_watermark,
-)
-
-# ==================== Logger ====================
-logger = get_logger(__name__)
-
-# ==================== All Exports ====================
 __all__ = [
-    # Config
-    'get_message',
-    'get_config',
-    'get_logger',
-
     # Validators
     'validate_url',
     'validate_user_id',
@@ -99,6 +79,8 @@ __all__ = [
     # Config & Messages
     'load_messages',
     'load_config',
+    'get_message',
+    'get_config',
     'MESSAGES',
     'CONFIG',
 
@@ -135,13 +117,4 @@ __all__ = [
     # Cleanup
     'cleanup_temp_files',
     'cleanup_old_files',
-
-    # Watermark
-    'get_logo_overlay_position',
-    'apply_simple_watermark',
-    'apply_animated_watermark',
-    'apply_watermark',
-
-    # Logger
-    'logger',
 ]
