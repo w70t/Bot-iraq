@@ -175,12 +175,14 @@ ANIME_QUOTES = [
 
 class DownloadProgressTracker:
     """تتبع تقدم التحميل مع عداد نسبة مئوية + اقتباسات أنمي عشوائية"""
-    def __init__(self, message, lang, loop):
+    def __init__(self, message, lang, loop, is_audio=False):
         self.message = message
         self.lang = lang
         self.loop = loop  # حفظ الـ event loop للاستخدام من thread آخر
         self.last_update_time = 0
         self.last_percentage = -1
+        self.is_audio = is_audio  # تتبع ما إذا كان تحميل صوتي
+        self.extraction_notified = False  # لمنع إرسال إشعار الاستخراج مرات متعددة
         # اختيار اقتباس عشوائي في بداية كل تحميل
         self.quote = random.choice(ANIME_QUOTES)
         logger.info(f"💬 تم اختيار حكمة عشوائية: {self.quote['ar'][:30]}...")
@@ -260,6 +262,23 @@ class DownloadProgressTracker:
 
             except Exception as e:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
+
+        elif d['status'] == 'finished':
+            # عند انتهاء التحميل، إذا كان صوتياً، أخبر المستخدم أن الاستخراج سيبدأ
+            if self.is_audio and not self.extraction_notified:
+                self.extraction_notified = True
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self._safe_update(
+                            "✅ **اكتمل التحميل!**\n\n"
+                            "🎵 **جاري استخراج الصوت...**\n\n"
+                            "🔄 يتم تحويل الفيديو إلى MP3\n"
+                            "⏳ قد يستغرق 1-3 دقائق حسب طول المقطع..."
+                        ),
+                        self.loop
+                    )
+                except Exception as e:
+                    logger.debug(f"تحديث حالة الاستخراج: {e}")
 
     async def _safe_update(self, text):
         """تحديث آمن للرسالة مع معالجة الأخطاء"""
@@ -512,6 +531,23 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
             await query.edit_message_text(
                 "🚫 **تحميل الصوتيات معطل حالياً!**\n\n"
                 "يرجى اختيار جودة فيديو بدلاً من ذلك."
+            )
+            return
+
+        # فحص مطلق: منع تحميل الصوتيات الطويلة جداً (>20 دقيقة) للجميع لتجنب مشاكل الأداء
+        duration_seconds = info_dict.get('duration', 0)
+        if duration_seconds > 1200:  # 20 دقيقة = 1200 ثانية
+            duration_minutes = duration_seconds / 60
+            await query.edit_message_text(
+                f"⚠️ **الملف طويل جداً للتحميل كصوت!**\n\n"
+                f"⏱️ مدة المقطع: {duration_minutes:.1f} دقيقة ({duration_seconds/3600:.1f} ساعة)\n"
+                f"🔒 الحد الأقصى: 20 دقيقة\n\n"
+                f"💡 **سبب الحد:**\n"
+                f"• استخراج الصوت من ملفات طويلة يستغرق وقتاً طويلاً (>10 دقائق)\n"
+                f"• حجم الملف الناتج قد يتجاوز حد Telegram (50MB)\n"
+                f"• قد يتسبب في مشاكل في الرفع والتحميل\n\n"
+                f"📹 جرب تحميله كفيديو بدلاً من ذلك!",
+                parse_mode='Markdown'
             )
             return
 
@@ -851,7 +887,7 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
             # مسار الملف المضغوط
             compressed_path = file_path.replace(".mp3", "_compressed.mp3")
 
-            # ضغط الملف باستخدام FFmpeg
+            # ضغط الملف باستخدام FFmpeg (async)
             compress_cmd = [
                 'ffmpeg', '-i', file_path,
                 '-b:a', '128k',           # Bitrate 128kbps
@@ -863,7 +899,12 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
                 '-y'                      # Overwrite
             ]
 
-            subprocess.run(compress_cmd, check=True, capture_output=True)
+            # تشغيل FFmpeg بشكل async لتجنب blocking
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                executor,
+                lambda: subprocess.run(compress_cmd, check=True, capture_output=True)
+            )
 
             # التحقق من نجاح الضغط
             if os.path.exists(compressed_path):
@@ -1205,11 +1246,12 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         # إذا كان فيديو عادي - الكود القديم
         loop = asyncio.get_event_loop()
 
-        progress_tracker = DownloadProgressTracker(processing_message, lang, loop)
+        progress_tracker = DownloadProgressTracker(processing_message, lang, loop, is_audio=is_audio)
         ydl_opts['progress_hooks'] = [progress_tracker.progress_hook]
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # تحميل الملف
                 await loop.run_in_executor(None, lambda: ydl.download([url]))
         except DownloadError as e:
             error_msg = str(e).lower()
@@ -1440,12 +1482,20 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             # محاولة رفع الملف إلى سيرفر خارجي (placeholder)
             alternative_url = await upload_to_server(final_video_path, user_id)
 
+            # الحصول على حجم الملف بأمان (قد يكون محذوفاً)
+            file_size_str = "Unknown"
+            if os.path.exists(final_video_path):
+                try:
+                    file_size_str = format_file_size(os.path.getsize(final_video_path))
+                except:
+                    pass
+
             # إرسال رسالة للمستخدم مع رابط بديل
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=(
                     f"⚠️ **حدث خطأ في رفع الملف مباشرة**\n\n"
-                    f"الملف كبير جداً ({format_file_size(os.path.getsize(final_video_path))})\n"
+                    f"الملف كبير جداً ({file_size_str})\n"
                     f"ولكن تم تحميله بنجاح على السيرفر!\n\n"
                     f"🔗 **رابط بديل:** {alternative_url}\n\n"
                     f"⏱️ المدة: {format_duration(duration)}\n"
@@ -1459,11 +1509,12 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             if LOG_CHANNEL_ID:
                 try:
                     log_channel_id = int(LOG_CHANNEL_ID)
+                    # استخدام file_size_str المحسوب مسبقاً
                     fail_report_text = (
                         "🔴 **فشل رفع ملف كبير (TimedOut)**\n\n"
                         f"👤 المستخدم: @{user.username if user.username else user.full_name} (ID: {user_id})\n"
                         f"🔗 الرابط الأصلي: {url[:100]}\n"
-                        f"📦 الحجم: {format_file_size(os.path.getsize(final_video_path))}\n"
+                        f"📦 الحجم: {file_size_str}\n"
                         f"⏱️ المدة: {format_duration(duration)}\n"
                         f"📝 العنوان: {title[:100]}\n"
                         f"⚠️ الخطأ: {upload_error}\n"
