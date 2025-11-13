@@ -33,6 +33,7 @@ from .users import (
 from .subscriptions import (
     is_subscribed,
     add_subscription,
+    remove_subscription,
     get_global_settings,
     set_subscription_enabled,
     set_welcome_broadcast_enabled,
@@ -157,6 +158,7 @@ __all__ = [
     # Subscriptions
     'is_subscribed',
     'add_subscription',
+    'remove_subscription',
     'get_global_settings',
     'set_subscription_enabled',
     'set_welcome_broadcast_enabled',

@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=3)
 
 # حالات المحادثة
-MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE, AWAITING_CUSTOM_PRICE = range(5)
+MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE, AWAITING_CUSTOM_PRICE, AWAITING_AUDIO_LIMIT, AWAITING_TIME_LIMIT, AWAITING_DAILY_LIMIT, AWAITING_USER_ID_BROADCAST, AWAITING_MESSAGE_BROADCAST, AWAITING_PLATFORM_COOKIE = range(11)
 
 async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج بسيط جداً لأمر /admin - خارج ConversationHandler تماماً"""
@@ -62,7 +62,7 @@ async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"✅ User {user_id} is admin - showing admin panel")
 
     try:
-        from database import is_logo_enabled, get_allowed_platforms, is_audio_enabled
+        from database import is_logo_enabled, get_allowed_platforms
 
         logo_status = is_logo_enabled()
         logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
@@ -74,9 +74,6 @@ async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYP
         sub_enabled = is_subscription_enabled()
         sub_status = "✅" if sub_enabled else "🚫"
 
-        audio_status = is_audio_enabled()
-        audio_text = "✅ مفعّل" if audio_status else "❌ معطّل"
-
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
             [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
@@ -84,7 +81,6 @@ async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
-            [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
             [InlineKeyboardButton("🍪 إدارة Cookies", callback_data="admin_cookies")],
             [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
@@ -137,7 +133,7 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
 
     try:
         # جلب حالات الإعدادات
-        from database import is_logo_enabled, get_allowed_platforms, is_audio_enabled
+        from database import is_logo_enabled, get_allowed_platforms
         logo_status = is_logo_enabled()
         logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
 
@@ -149,9 +145,6 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
         sub_enabled = is_subscription_enabled()
         sub_status = "✅" if sub_enabled else "🚫"
 
-        audio_status = is_audio_enabled()
-        audio_text = "✅ مفعّل" if audio_status else "❌ معطّل"
-
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
             [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
@@ -159,7 +152,6 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
             [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
-            [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
             [InlineKeyboardButton("🍪 إدارة Cookies", callback_data="admin_cookies")],
             [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
@@ -243,10 +235,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sub_enabled = is_subscription_enabled()
     sub_status = "✅" if sub_enabled else "🚫"
 
-    # جلب حالة الصوتيات
-    from database import is_audio_enabled
-    audio_status = is_audio_enabled()
-    audio_text = "✅ مفعّل" if audio_status else "❌ معطّل"
 
     keyboard = [
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
@@ -255,7 +243,6 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
         [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
         [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
-        [InlineKeyboardButton(f"🎧 إعدادات الصوت ({audio_text})", callback_data="admin_audio_settings")],
         [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
         [InlineKeyboardButton("🍪 إدارة Cookies", callback_data="admin_cookies")],
         [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
@@ -345,12 +332,36 @@ async def show_download_logs(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return MAIN_MENU
 
 async def upgrade_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء عملية ترقية المستخدم"""
+    """عرض خيارات إدارة الاشتراكات"""
     query = update.callback_query
     await query.answer()
-    
+
     text = (
-        "⭐ ترقية عضو إلى VIP\n\n"
+        "⭐ إدارة اشتراكات الأعضاء\n\n"
+        "اختر الإجراء المطلوب:"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة اشتراك", callback_data="admin_add_subscription")],
+        [InlineKeyboardButton("➖ إلغاء اشتراك", callback_data="admin_cancel_subscription")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup
+    )
+
+    return MAIN_MENU
+
+async def admin_add_subscription_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء عملية إضافة اشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "➕ إضافة اشتراك جديد\n\n"
         "أرسل أحد التالي:\n\n"
         "1️⃣ User ID (رقم):\n"
         "   مثال: 123456789\n\n"
@@ -361,27 +372,31 @@ async def upgrade_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "• رسائل السجل في القناة\n"
         "• أمر /account من المستخدم"
     )
-    
+
     keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
         text,
         reply_markup=reply_markup
     )
-    
+
     return AWAITING_USER_ID
 
 async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """استقبال معرف المستخدم أو اليوزر نيم"""
+    # التحقق من الوضع: إلغاء اشتراك أم إضافة اشتراك
+    if context.user_data.get('cancel_subscription_mode'):
+        return await receive_user_id_for_cancel(update, context)
+
     user_input = update.message.text.strip()
     user_id = None
     user_data = None
-    
+
     # محاولة التعامل مع Username
     if user_input.startswith('@') or not user_input.isdigit():
         username = user_input.replace('@', '')  # إزالة @ إذا وجدت
-        
+
         # البحث عن المستخدم بالـ username
         all_users = get_all_users()
         for user in all_users:
@@ -389,7 +404,7 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id = user.get('user_id')
                 user_data = user
                 break
-        
+
         if not user_id:
             await update.message.reply_text(
                 f"❌ لم أجد مستخدم بالـ username: {username}\n\n"
@@ -398,7 +413,7 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• المستخدم أرسل /start للبوت"
             )
             return AWAITING_USER_ID
-    
+
     # محاولة التعامل مع User ID
     else:
         # التحقق من صحة معرف المستخدم
@@ -415,19 +430,19 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         user_id = validated_user_id
         user_data = get_user(user_id)
-        
+
         if not user_data:
             await update.message.reply_text(
                 "❌ المستخدم غير موجود في قاعدة البيانات!\n"
                 "تأكد من أن المستخدم قام بإرسال /start للبوت."
             )
             return AWAITING_USER_ID
-    
+
     context.user_data['upgrade_target_id'] = user_id
-    
+
     user_name = user_data.get('full_name', 'غير معروف')
     username = user_data.get('username', 'لا يوجد')
-    
+
     text = (
         f"✅ تم العثور على المستخدم:\n\n"
         f"👤 الاسم: {user_name}\n"
@@ -436,15 +451,15 @@ async def receive_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📅 أرسل عدد الأيام للاشتراك:\n"
         f"مثال: 30 (شهر) | 365 (سنة)"
     )
-    
+
     keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await update.message.reply_text(
         text,
         reply_markup=reply_markup
     )
-    
+
     return AWAITING_DAYS
 
 async def receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -516,6 +531,183 @@ async def receive_days(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MAIN_MENU
     else:
         await update.message.reply_text("❌ فشلت عملية الترقية!")
+        return ConversationHandler.END
+
+async def admin_cancel_subscription_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء عملية إلغاء اشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "➖ إلغاء اشتراك عضو\n\n"
+        "أرسل أحد التالي:\n\n"
+        "1️⃣ User ID (رقم):\n"
+        "   مثال: 123456789\n\n"
+        "2️⃣ Username:\n"
+        "   مثال: @username أو username\n\n"
+        "💡 يمكنك الحصول على User ID من:\n"
+        "• معلومات الحساب\n"
+        "• رسائل السجل في القناة\n"
+        "• أمر /account من المستخدم"
+    )
+
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text,
+        reply_markup=reply_markup
+    )
+
+    # حفظ علامة أن هذا طلب إلغاء اشتراك
+    context.user_data['cancel_subscription_mode'] = True
+
+    return AWAITING_USER_ID
+
+async def receive_user_id_for_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال معرف المستخدم لإلغاء الاشتراك"""
+    user_input = update.message.text.strip()
+    user_id = None
+    user_data = None
+
+    # محاولة التعامل مع Username
+    if user_input.startswith('@') or not user_input.isdigit():
+        username = user_input.replace('@', '')
+
+        # البحث عن المستخدم بالـ username
+        all_users = get_all_users()
+        for user in all_users:
+            if user.get('username') == username:
+                user_id = user.get('user_id')
+                user_data = user
+                break
+
+        if not user_id:
+            await update.message.reply_text(
+                f"❌ لم أجد مستخدم بالـ username: {username}\n\n"
+                f"💡 تأكد من:\n"
+                f"• اليوزر نيم صحيح\n"
+                f"• المستخدم أرسل /start للبوت"
+            )
+            return AWAITING_USER_ID
+
+    # محاولة التعامل مع User ID
+    else:
+        is_valid, validated_user_id, error_msg = validate_user_id(user_input)
+
+        if not is_valid:
+            await update.message.reply_text(
+                f"❌ {error_msg}\n\n"
+                "أرسل:\n"
+                "• User ID (رقم): مثال 123456789\n"
+                "• أو Username: مثال @username"
+            )
+            return AWAITING_USER_ID
+
+        user_id = validated_user_id
+        user_data = get_user(user_id)
+
+        if not user_data:
+            await update.message.reply_text(
+                "❌ المستخدم غير موجود في قاعدة البيانات!\n"
+                "تأكد من أن المستخدم قام بإرسال /start للبوت."
+            )
+            return AWAITING_USER_ID
+
+    # التحقق من وجود اشتراك
+    subscription_end = user_data.get('subscription_end')
+    if not subscription_end:
+        await update.message.reply_text(
+            "⚠️ هذا المستخدم ليس لديه اشتراك VIP نشط!"
+        )
+        return ConversationHandler.END
+
+    context.user_data['cancel_target_id'] = user_id
+
+    user_name = user_data.get('full_name', 'غير معروف')
+    username = user_data.get('username', 'لا يوجد')
+
+    text = (
+        f"⚠️ تأكيد إلغاء الاشتراك\n\n"
+        f"👤 الاسم: {user_name}\n"
+        f"🆔 المعرف: {user_id}\n"
+        f"🔗 اليوزر: @{username if username != 'لا يوجد' else 'غير متوفر'}\n"
+        f"📅 الاشتراك ينتهي في: {subscription_end}\n\n"
+        f"❓ هل أنت متأكد من إلغاء الاشتراك؟"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ نعم، إلغاء الاشتراك", callback_data="confirm_cancel_sub")],
+        [InlineKeyboardButton("❌ لا، إلغاء العملية", callback_data="admin_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        text,
+        reply_markup=reply_markup
+    )
+
+    return MAIN_MENU
+
+async def confirm_cancel_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تأكيد وتنفيذ إلغاء الاشتراك"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = context.user_data.get('cancel_target_id')
+
+    if not user_id:
+        await query.edit_message_text("❌ حدث خطأ! أعد المحاولة.")
+        return ConversationHandler.END
+
+    # حذف الاشتراك من قاعدة البيانات
+    from database import remove_subscription
+
+    if remove_subscription(user_id):
+        user_data = get_user(user_id)
+        user_name = user_data.get('full_name', 'المستخدم')
+
+        success_text = (
+            f"✅ تم إلغاء الاشتراك بنجاح!\n\n"
+            f"👤 المستخدم: {user_name}\n"
+            f"🆔 المعرف: {user_id}\n\n"
+            f"🔔 تم إرسال إشعار للمستخدم"
+        )
+
+        await query.edit_message_text(success_text)
+
+        # إرسال إشعار للمستخدم
+        try:
+            notification_text = (
+                f"⚠️ تم إلغاء اشتراك VIP الخاص بك\n\n"
+                f"📌 تم إلغاء اشتراكك من قبل الإدارة\n"
+                f"💡 للحصول على اشتراك جديد، يرجى التواصل مع الدعم\n\n"
+                f"شكراً لاستخدامك البوت 🙏"
+            )
+
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=notification_text
+            )
+            logger.info(f"✅ تم إرسال إشعار إلغاء الاشتراك للمستخدم {user_id}")
+        except Exception as e:
+            log_warning(f"⚠️ فشل إرسال الإشعار للمستخدم {user_id}: {e}", module="handlers/admin.py")
+
+        del context.user_data['cancel_target_id']
+        if 'cancel_subscription_mode' in context.user_data:
+            del context.user_data['cancel_subscription_mode']
+
+        keyboard = [[InlineKeyboardButton("🔙 العودة للوحة التحكم", callback_data="admin_main")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.message.reply_text(
+            "اختر الإجراء التالي:",
+            reply_markup=reply_markup
+        )
+
+        return MAIN_MENU
+    else:
+        await query.edit_message_text("❌ فشلت عملية إلغاء الاشتراك!")
         return ConversationHandler.END
 
 async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -627,15 +819,21 @@ async def manage_logo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"اختر الإعداد المطلوب:"
     )
     
+    # تحديد زر التفعيل/الإيقاف حسب الحالة
+    toggle_button = (
+        InlineKeyboardButton("❌ تعطيل اللوجو", callback_data="logo_disable")
+        if current_status
+        else InlineKeyboardButton("✅ تفعيل اللوجو", callback_data="logo_enable")
+    )
+
     keyboard = [
-        [InlineKeyboardButton("✅ تفعيل اللوجو", callback_data="logo_enable"),
-         InlineKeyboardButton("❌ إيقاف اللوجو", callback_data="logo_disable")],
-        [InlineKeyboardButton("🎬 تغيير نوع الحركة", callback_data="logo_change_animation")],
-        [InlineKeyboardButton("📍 تغيير الموضع", callback_data="logo_change_position")],
-        [InlineKeyboardButton("📏 تغيير الحجم", callback_data="logo_change_size")],
-        [InlineKeyboardButton("💎 تغيير الشفافية", callback_data="logo_change_opacity")],
-        [InlineKeyboardButton("👥 تغيير الفئة المستهدفة", callback_data="logo_change_target")],
-        [InlineKeyboardButton("🔙 العودة", callback_data="admin_back")]
+        [toggle_button],
+        [InlineKeyboardButton("🎬 نوع الحركة", callback_data="logo_change_animation")],
+        [InlineKeyboardButton("📍 موقع اللوجو", callback_data="logo_change_position")],
+        [InlineKeyboardButton("📏 حجم اللوجو", callback_data="logo_change_size")],
+        [InlineKeyboardButton("🎨 شفافية اللوجو", callback_data="logo_change_opacity")],
+        [InlineKeyboardButton("🎯 الفئة المستهدفة", callback_data="logo_change_target")],
+        [InlineKeyboardButton("↩️ العودة", callback_data="admin_back")]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -905,153 +1103,63 @@ async def set_opacity(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def show_target_selector(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض قائمة اختيار الفئة المستهدفة لتطبيق اللوجو"""
+    """عرض قائمة اختيار الفئة المستهدفة لتطبيق اللوجو - نسخة مبسطة"""
     query = update.callback_query
     await query.answer()
-    
+
     from database import get_logo_target
     current_target, current_target_name = get_logo_target()
-    
+
     text = (
-        f"🎯 اختر الفئة المستهدفة لتطبيق اللوجو:\n\n"
-        f"💡 **شرح مبسط:**\n\n"
-        f"👥 **العاديون:**\n"
-        f"• مع النقاط: ضع اللوجو على العاديين (لا يهم النقاط)\n"
-        f"• بدون النقاط: ضع اللوجو على العاديين الذين **ليس** لديهم نقاط\n"
-        f"• جميع العاديون: ضع اللوجو على كل العاديين\n\n"
-        f"⭐ **VIP:**\n"
-        f"• مع النقاط: ضع اللوجو على VIP (لا يهم النقاط)\n"
-        f"• بدون النقاط: ضع اللوجو على VIP الذين **ليس** لديهم نقاط\n"
-        f"• جميع VIP: ضع اللوجو على كل VIP\n\n"
-        f"🌟 **الجميع:**\n"
-        f"• مع النقاط: ضع اللوجو على الجميع (لا يهم النقاط)\n"
-        f"• بدون النقاط: ضع اللوجو على من **ليس** لديهم نقاط\n"
-        f"• الجميع: ضع اللوجو على كل المستخدمين\n\n"
-        f"✅ الخيار الحالي: {current_target_name}\n\n"
-        f"📌 **مثال:** إذا اخترت \"العاديون - بدون النقاط\"، سيظهر اللوجو فقط للمستخدمين العاديين الذين ليس لديهم نقاط مجانية"
+        f"🎯 **اختر الفئة المستهدفة لتطبيق اللوجو:**\n\n"
+        f"✅ **الإعداد الحالي:** {current_target_name}\n\n"
+        f"💡 **الخيارات المتاحة:**\n"
+        f"• 👥 الجميع: سيظهر اللوجو لكل المستخدمين\n"
+        f"• 💎 المشتركين فقط: سيظهر اللوجو لمشتركي VIP فقط\n"
+        f"• 🆓 غير المشتركين: سيظهر اللوجو لغير المشتركين فقط"
     )
-    
+
     keyboard = [
-        [InlineKeyboardButton("👥 العاديون", callback_data="logo_category_free")],
-        [InlineKeyboardButton("⭐ VIP", callback_data="logo_category_vip")],
-        [InlineKeyboardButton("🌟 الجميع", callback_data="logo_category_everyone")],
-        [InlineKeyboardButton("🔙 العودة", callback_data="admin_logo")]
+        [InlineKeyboardButton("👥 الجميع (VIP + مجاني)", callback_data="logo_target_all")],
+        [InlineKeyboardButton("💎 المشتركين فقط", callback_data="logo_target_vip")],
+        [InlineKeyboardButton("🆓 غير المشتركين فقط", callback_data="logo_target_free")],
+        [InlineKeyboardButton("↩️ العودة", callback_data="admin_logo")]
     ]
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
         text,
-        reply_markup=reply_markup
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
-    
+
     return MAIN_MENU
 
 
-async def show_logo_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إظهار الخيارات التفصيلية للفئات"""
+async def handle_logo_target_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تعيين الفئة المستهدفة لتطبيق اللوجو - نسخة مبسطة"""
     query = update.callback_query
     await query.answer()
-    
-    from database import get_logo_target
-    current_target, _ = get_logo_target()
-    
-    category = query.data.replace("logo_category_", "")
-    
-    if category == "free":
-        text = "👥 العاديون - اختر الخيار:\n\n• مع النقاط = ضع اللوجو على كل العاديين\n• بدون النقاط = ضع اللوجو على العاديين بدون نقاط\n• الجميع = كل العاديين"
-        buttons = [
-            [InlineKeyboardButton(
-                "✅ مع النقاط (كل العاديين)" if current_target == 'free_with_points' else "⚪ مع النقاط (كل العاديين)",
-                callback_data="set_target_free_with_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ بدون النقاط (من ليس لديه نقاط)" if current_target == 'free_no_points' else "⚪ بدون النقاط (من ليس لديه نقاط)",
-                callback_data="set_target_free_no_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ جميع العاديون" if current_target == 'free_all' else "⚪ جميع العاديون",
-                callback_data="set_target_free_all"
-            )]
-        ]
-    elif category == "vip":
-        text = "⭐ VIP - اختر الخيار:\n\n• مع النقاط = ضع اللوجو على كل VIP\n• بدون النقاط = ضع اللوجو على VIP بدون نقاط\n• الجميع = كل VIP"
-        buttons = [
-            [InlineKeyboardButton(
-                "✅ مع النقاط (كل VIP)" if current_target == 'vip_with_points' else "⚪ مع النقاط (كل VIP)",
-                callback_data="set_target_vip_with_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ بدون النقاط (من ليس لديه نقاط)" if current_target == 'vip_no_points' else "⚪ بدون النقاط (من ليس لديه نقاط)",
-                callback_data="set_target_vip_no_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ جميع VIP" if current_target == 'vip_all' else "⚪ جميع VIP",
-                callback_data="set_target_vip_all"
-            )]
-        ]
-    elif category == "everyone":
-        text = "🌟 الجميع - اختر الخيار:\n\n• مع النقاط = ضع اللوجو على الجميع\n• بدون النقاط = ضع اللوجو على من ليس لديه نقاط\n• الجميع = كل المستخدمين"
-        buttons = [
-            [InlineKeyboardButton(
-                "✅ مع النقاط (الجميع)" if current_target == 'everyone_with_points' else "⚪ مع النقاط (الجميع)",
-                callback_data="set_target_everyone_with_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ بدون النقاط (من ليس لديه نقاط)" if current_target == 'everyone_no_points' else "⚪ بدون النقاط (من ليس لديه نقاط)",
-                callback_data="set_target_everyone_no_points"
-            )],
-            [InlineKeyboardButton(
-                "✅ الجميع" if current_target == 'everyone_all' else "⚪ الجميع",
-                callback_data="set_target_everyone_all"
-            )]
-        ]
-    else:
-        # في حالة الخطأ، العودة للقائمة الرئيسية
-        return await show_target_selector(update, context)
-    
-    # إضافة زر العودة
-    buttons.append([InlineKeyboardButton("🔙 العودة لقائمة الفئات", callback_data="set_target_main")])
-    
-    reply_markup = InlineKeyboardMarkup(buttons)
-    
-    await query.edit_message_text(text, reply_markup=reply_markup)
-    return MAIN_MENU
 
-
-async def show_main_target_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """العودة للقائمة الرئيسية لاختيار الفئة"""
-    query = update.callback_query
-    await query.answer()
-    return await show_target_selector(update, context)
-
-
-async def set_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تعيين الفئة المستهدفة لتطبيق اللوجو"""
-    query = update.callback_query
-    
     from database import set_logo_target
-    
+
     # استخراج الفئة المستهدفة من callback_data
-    target = query.data.replace("set_target_", "")
-    
+    target = query.data.replace("logo_target_", "")
+
+    # القيم المبسطة والأسماء
     target_names = {
-        'free_with_points': 'العاديون - يظهر للجميع (لا يهم النقاط)',
-        'free_no_points': 'العاديون - فقط من ليس لديهم نقاط',
-        'free_all': 'جميع العاديون',
-        'vip_with_points': 'VIP - يظهر للجميع (لا يهم النقاط)',
-        'vip_no_points': 'VIP - فقط من ليس لديهم نقاط',
-        'vip_all': 'جميع VIP',
-        'everyone_with_points': 'الجميع - يظهر للجميع (لا يهم النقاط)',
-        'everyone_no_points': 'الجميع - فقط من ليس لديهم نقاط',
-        'everyone_all': 'الجميع',
-        'no_credits_only': 'المستخدمون بدون نقاط فقط',
-        'everyone_except_no_credits': 'الجميع عدا من لديهم نقاط'
+        'all': '👥 الجميع (VIP + مجاني)',
+        'vip': '💎 المشتركين فقط',
+        'free': '🆓 غير المشتركين فقط'
     }
-    
-    set_logo_target(target)
-    await query.answer(f"✅ تم تعيين الفئة المستهدفة إلى: {target_names[target]}", show_alert=True)
-    
+
+    if target in target_names:
+        set_logo_target(target)
+        await query.answer(f"✅ تم تعيين الفئة المستهدفة إلى: {target_names[target]}", show_alert=True)
+    else:
+        await query.answer("❌ خطأ في اختيار الفئة!", show_alert=True)
+
     # العودة لقائمة إدارة اللوجو
     return await manage_logo(update, context)
 
@@ -1072,69 +1180,6 @@ async def toggle_logo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # العودة للقائمة الرئيسية
     return await admin_panel(update, context)
-
-async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بدء الرسالة الجماعية"""
-    query = update.callback_query
-    await query.answer()
-    
-    text = (
-        "📢 إرسال رسالة جماعية\n\n"
-        "أرسل الرسالة التي تريد إرسالها لجميع المستخدمين:\n\n"
-        "⚠️ تأكد من صياغة الرسالة بعناية!"
-    )
-    
-    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="admin_back")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text,
-        reply_markup=reply_markup
-    )
-    
-    return BROADCAST_MESSAGE
-
-async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إرسال الرسالة الجماعية"""
-    message_text = update.message.text
-    all_users = get_all_users()
-    
-    await update.message.reply_text(
-        f"📤 جاري الإرسال إلى {len(all_users)} مستخدم..."
-    )
-    
-    success_count = 0
-    failed_count = 0
-
-    for user in all_users:
-        try:
-            await context.bot.send_message(
-                chat_id=user['user_id'],
-                text=message_text
-            )
-            success_count += 1
-            # ✅ إضافة rate limiting: تأخير 50ms بين كل رسالة
-            await asyncio.sleep(0.05)
-        except Exception as e:
-            log_warning(f"فشل إرسال لـ {user['user_id']}: {e}", module="handlers/admin.py")
-            failed_count += 1
-    
-    result_text = (
-        f"✅ تم الإرسال!\n\n"
-        f"✔️ نجح: {success_count}\n"
-        f"❌ فشل: {failed_count}\n"
-        f"📊 الإجمالي: {len(all_users)}"
-    )
-    
-    keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="admin_main")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        result_text,
-        reply_markup=reply_markup
-    )
-    
-    return MAIN_MENU
 
 async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إدارة المكتبات والمنصات مع دعم الكوكيز المتكامل (V5.1)"""
@@ -1627,19 +1672,20 @@ async def show_vip_control_panel(update: Update, context: ContextTypes.DEFAULT_T
 ## معالجات الأزرار مع نظام التأكيد
 
 async def handle_sub_enable_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض تأكيد تفعيل الاشتراك"""
+    """عرض تأكيد تفعيل الاشتراك مع خيار إخبار الأعضاء"""
     query = update.callback_query
     await query.answer()
 
     message_text = (
         "⚙️ **هل تريد بالتأكيد تفعيل نظام الاشتراك؟**\n\n"
-        "✅ سيظهر زر الاشتراك VIP لجميع المستخدمين.\n"
-        "📢 سيتم إرسال إشعار للمستخدمين (إذا كان مفعلاً)."
+        "✅ سيظهر زر الاشتراك VIP لجميع المستخدمين.\n\n"
+        "💬 **هل تريد إخبار جميع الأعضاء عن بدء الاشتراك؟**"
     )
 
     keyboard = [
-        [InlineKeyboardButton("✅ نعم، قم بالتفعيل", callback_data="sub_enable_yes")],
-        [InlineKeyboardButton("❌ لا، إلغاء", callback_data="sub_action_cancel")],
+        [InlineKeyboardButton("✅ نعم، أخبر الأعضاء", callback_data="sub_enable_notify_yes")],
+        [InlineKeyboardButton("⏭️ لا، تفعيل بدون إخبار", callback_data="sub_enable_notify_no")],
+        [InlineKeyboardButton("❌ إلغاء", callback_data="admin_vip_control")],
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1660,8 +1706,8 @@ async def handle_sub_disable_confirm(update: Update, context: ContextTypes.DEFAU
 
     message_text = (
         "⚙️ **هل تريد بالتأكيد إيقاف نظام الاشتراك؟**\n\n"
-        "❌ سيتم إخفاء زر الاشتراك من القائمة الرئيسية.\n"
-        "🔒 لن يتمكن المستخدمون من رؤية الاشتراك VIP."
+        "❌ سيصبح البوت مجاني للجميع\n"
+        "🎉 المشتركون وغير المشتركين سيحصلون على نفس المزايا"
     )
 
     keyboard = [
@@ -1680,8 +1726,8 @@ async def handle_sub_disable_confirm(update: Update, context: ContextTypes.DEFAU
     return MAIN_MENU
 
 
-async def handle_sub_enable_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تنفيذ تفعيل الاشتراك"""
+async def handle_sub_enable_notify_yes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تفعيل الاشتراك + إرسال إشعار لجميع المستخدمين"""
     query = update.callback_query
     await query.answer()
 
@@ -1690,27 +1736,52 @@ async def handle_sub_enable_yes(update: Update, context: ContextTypes.DEFAULT_TY
     if success:
         await query.answer("✅ تم تفعيل نظام الاشتراك بنجاح!", show_alert=True)
 
-        # إرسال إشعار للمستخدمين إذا كان مفعلاً
-        if is_welcome_broadcast_enabled():
-            from database import get_all_users
-            all_users = get_all_users()
+        # إرسال إشعار لجميع المستخدمين
+        from database import get_all_users
+        all_users = get_all_users()
 
-            welcome_text = (
-                "💎 **نظام الاشتراك VIP تم تفعيله!**\n\n"
-                "✨ ستحصل قريباً على مزايا إضافية مثل:\n"
-                "🎞️ تحميل أسرع، 💬 دعم مباشر، 🎁 هدايا خاصة\n"
-                "📢 تابع القناة الرسمية @iraq_7kmmy لمزيد من التفاصيل 🔗"
-            )
+        welcome_text = (
+            "💎 **نظام الاشتراك VIP تم تفعيله!**\n\n"
+            "✨ ستحصل قريباً على مزايا إضافية مثل:\n"
+            "🎞️ تحميل أسرع، 💬 دعم مباشر، 🎁 هدايا خاصة\n"
+            "📢 تابع القناة الرسمية @iraq_7kmmy لمزيد من التفاصيل 🔗"
+        )
 
-            for user in all_users[:10]:  # أول 10 فقط لتجنب البطء
-                try:
-                    await context.bot.send_message(
-                        chat_id=user['user_id'],
-                        text=welcome_text,
-                        parse_mode='Markdown'
-                    )
-                except:
-                    pass
+        success_count = 0
+        fail_count = 0
+
+        for user in all_users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user['user_id'],
+                    text=welcome_text,
+                    parse_mode='Markdown'
+                )
+                success_count += 1
+            except:
+                fail_count += 1
+                pass
+
+        # إشعار بعدد الرسائل المرسلة
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text=f"📊 تم إرسال الإشعار:\n✅ نجح: {success_count}\n❌ فشل: {fail_count}"
+        )
+    else:
+        await query.answer("❌ فشل تفعيل الاشتراك!", show_alert=True)
+
+    return await show_vip_control_panel(update, context)
+
+
+async def handle_sub_enable_notify_no(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تفعيل الاشتراك بدون إرسال إشعار"""
+    query = update.callback_query
+    await query.answer()
+
+    success = set_subscription_enabled(True)
+
+    if success:
+        await query.answer("✅ تم تفعيل نظام الاشتراك بنجاح (بدون إشعار)!", show_alert=True)
     else:
         await query.answer("❌ فشل تفعيل الاشتراك!", show_alert=True)
 
@@ -2021,8 +2092,6 @@ async def handle_audio_preset(update: Update, context: ContextTypes.DEFAULT_TYPE
     return await show_audio_settings_panel(update, context)
 
 
-AWAITING_AUDIO_LIMIT = 6  # New conversation state
-
 async def handle_audio_set_custom_limit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """طلب إدخال حد زمني مخصص"""
     query = update.callback_query
@@ -2262,9 +2331,6 @@ async def handle_confirm_resolve(update: Update, context: ContextTypes.DEFAULT_T
 # ═══════════════════════════════════════════════════════════════
 #  General Limits Control Panel
 # ═══════════════════════════════════════════════════════════════
-
-AWAITING_TIME_LIMIT = 10
-AWAITING_DAILY_LIMIT = 11
 
 async def show_general_limits_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض لوحة إعدادات القيود العامة"""
@@ -2994,10 +3060,6 @@ async def cancel_platform_cookie_upload(update: Update, context: ContextTypes.DE
 #  Broadcast System Enhancement - Individual User Messaging
 # ═══════════════════════════════════════════════════════════════
 
-AWAITING_USER_ID_BROADCAST = 8
-AWAITING_MESSAGE_BROADCAST = 9
-AWAITING_PLATFORM_COOKIE = 12  # Cookie upload per platform (V5.1)
-
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء نظام الإرسال الجماعي المُحسّن"""
     query = update.callback_query
@@ -3223,6 +3285,9 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(admin_panel, pattern='^admin$'),  # Handle "Admin" button clicks
             CallbackQueryHandler(show_statistics, pattern='^admin_stats$'),
             CallbackQueryHandler(upgrade_user_start, pattern='^admin_upgrade$'),
+            CallbackQueryHandler(admin_add_subscription_start, pattern='^admin_add_subscription$'),
+            CallbackQueryHandler(admin_cancel_subscription_start, pattern='^admin_cancel_subscription$'),
+            CallbackQueryHandler(confirm_cancel_subscription, pattern='^confirm_cancel_sub$'),
             CallbackQueryHandler(manage_logo, pattern='^admin_logo$'),
             CallbackQueryHandler(toggle_logo, pattern='^logo_(enable|disable)$'),
             CallbackQueryHandler(show_animation_selector, pattern='^logo_change_animation$'),
@@ -3234,9 +3299,7 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_opacity_selector, pattern='^logo_change_opacity$'),
             CallbackQueryHandler(set_opacity, pattern='^set_opacity_'),
             CallbackQueryHandler(show_target_selector, pattern='^logo_change_target$'),
-            CallbackQueryHandler(show_main_target_menu, pattern='^set_target_main$'),
-            CallbackQueryHandler(show_logo_category, pattern='^logo_category_'),
-            CallbackQueryHandler(set_target, pattern='^set_target_'),
+            CallbackQueryHandler(handle_logo_target_set, pattern='^logo_target_'),
             # إدارة المكتبات الجديدة
             CallbackQueryHandler(manage_libraries, pattern='^admin_libraries$'),
             CallbackQueryHandler(manage_libraries, pattern='^manage_libraries$'),  # Back button from cookie upload
@@ -3252,7 +3315,8 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_vip_control_panel, pattern='^admin_vip_control$'),
             CallbackQueryHandler(handle_sub_enable_confirm, pattern='^sub_enable$'),
             CallbackQueryHandler(handle_sub_disable_confirm, pattern='^sub_disable$'),
-            CallbackQueryHandler(handle_sub_enable_yes, pattern='^sub_enable_yes$'),
+            CallbackQueryHandler(handle_sub_enable_notify_yes, pattern='^sub_enable_notify_yes$'),
+            CallbackQueryHandler(handle_sub_enable_notify_no, pattern='^sub_enable_notify_no$'),
             CallbackQueryHandler(handle_sub_disable_yes, pattern='^sub_disable_yes$'),
             CallbackQueryHandler(handle_sub_action_cancel, pattern='^sub_action_cancel$'),
             CallbackQueryHandler(handle_sub_change_price, pattern='^sub_change_price$'),
