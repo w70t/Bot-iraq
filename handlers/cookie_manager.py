@@ -715,17 +715,25 @@ class CookieManager:
                 encrypted_date = datetime.fromisoformat(metadata['encrypted_at'])
                 age_days = (datetime.now() - encrypted_date).days
 
+                # ⭐ عد الكوكيز في الملف
+                cookie_count = self._count_cookies(cookie_file)
+
                 info.update({
                     'age_days': age_days,
                     'validated': metadata.get('validated', False),
                     'last_validated': metadata.get('last_validated', 'Never'),
-                    'encrypted_at': metadata['encrypted_at']
+                    'encrypted_at': metadata['encrypted_at'],
+                    'cookie_count': cookie_count  # ⭐ إضافة عدد الكوكيز
                 })
             else:
+                # ⭐ عد الكوكيز حتى بدون metadata
+                cookie_count = self._count_cookies(cookie_file)
+
                 info.update({
                     'age_days': 0,
                     'validated': False,
-                    'last_validated': 'Never'
+                    'last_validated': 'Never',
+                    'cookie_count': cookie_count  # ⭐ إضافة عدد الكوكيز
                 })
 
             return info
@@ -736,6 +744,39 @@ class CookieManager:
                 'linked': is_linked,
                 'needs_cookies': True
             }
+
+    def _count_cookies(self, cookie_file: str) -> int:
+        """عد الكوكيز الصالحة في الملف المشفر"""
+        try:
+            # فك تشفير الملف مؤقتاً للعد
+            temp_path = self.decrypt_cookie_file(cookie_file)
+            if not temp_path or not os.path.exists(temp_path):
+                return 0
+
+            # قراءة وعد الكوكيز
+            with open(temp_path, 'r') as f:
+                lines = f.readlines()
+
+            # عد السطور الصالحة (ليست تعليقات أو فارغة)
+            count = 0
+            for line in lines:
+                line = line.strip()
+                # تجاهل السطور الفارغة
+                if not line:
+                    continue
+                # تجاهل التعليقات (لكن اعتبر #HttpOnly_ كوكيز صالحة)
+                if line.startswith('#') and not line.startswith('#HttpOnly_'):
+                    continue
+                count += 1
+
+            # حذف الملف المؤقت
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+            return count
+        except Exception as e:
+            logger.error(f"❌ Failed to count cookies for {cookie_file}: {e}")
+            return 0
 
     def delete_cookies(self, platform: str) -> bool:
         """Delete encrypted cookies for a platform"""
