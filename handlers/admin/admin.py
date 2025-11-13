@@ -3385,7 +3385,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ConversationHandler للوحة التحكم
 admin_conv_handler = ConversationHandler(
     entry_points=[
-        CommandHandler('admin', admin_panel),  # معالج أمر /admin يستخدم admin_panel مباشرة
+        CommandHandler('admin', admin_command_handler),  # ✅ معالج أمر /admin
+        CallbackQueryHandler(admin_panel, pattern='^admin_panel$'),  # ✅ معالج زر لوحة التحكم من /start
     ],
     states={
         MAIN_MENU: [

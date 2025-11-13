@@ -1,21 +1,19 @@
 """
 Admin handlers module - معالجات المشرفين
 """
-from .admin import admin_conv_handler, admin_command_simple
+from .admin import admin_conv_handler
 
 # استيراد health_check إذا كان موجوداً
 try:
     from .health_check import health_check_command, system_stats_command
     __all__ = [
         'admin_conv_handler',
-        'admin_command_simple',
         'health_check_command',
         'system_stats_command'
     ]
 except ImportError:
     __all__ = [
-        'admin_conv_handler',
-        'admin_command_simple'
+        'admin_conv_handler'
     ]
 
 # استيراد الدوال الأساسية من admin.py
