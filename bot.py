@@ -619,7 +619,7 @@ def main() -> None:
         handle_set_time_limit_preset, handle_set_time_limit_custom,
         show_cookie_status_detail, handle_cookie_test_all, handle_cookie_test_stories,
         show_cookie_encryption_info, handle_cookie_delete_all,
-        handle_upload_cookie_button, broadcast_all_start, broadcast_individual_start
+        handle_upload_cookie_button
     )
     # استيراد handlers من cookie_manager
     from handlers.cookie_manager import (
@@ -686,8 +686,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(show_cookie_encryption_info, pattern="^cookie_encryption_info$"))
     application.add_handler(CallbackQueryHandler(handle_cookie_delete_all, pattern="^cookie_delete_all$"))
     application.add_handler(CallbackQueryHandler(handle_upload_cookie_button, pattern="^upload_cookie_"))
-    application.add_handler(CallbackQueryHandler(broadcast_all_start, pattern="^broadcast_all$"))
-    application.add_handler(CallbackQueryHandler(broadcast_individual_start, pattern="^broadcast_individual$"))
+    # broadcast_all_start و broadcast_individual_start محذوفة من هنا لأنها داخل ConversationHandler
 
     # Handlers لأزرار التأكيد في Cookies
     application.add_handler(CallbackQueryHandler(confirm_delete_all_cookies_callback, pattern="^confirm_delete_all_cookies$"))
