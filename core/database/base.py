@@ -36,6 +36,12 @@ except (ValueError, AttributeError) as e:
     logger.error(f"❌ Failed to parse ADMIN_ID/ADMIN_IDS from .env: {e}")
     ADMIN_IDS = []
 
+# تهيئة المتغيرات العامة
+client = None
+db = None
+users_collection = None
+settings_collection = None
+
 try:
     if not MONGODB_URI:
         raise ValueError("متغير البيئة MONGODB_URI غير موجود.")
