@@ -241,14 +241,22 @@ class DownloadProgressTracker:
                         status_emoji = "✨"
                         status_text = "على وشك الانتهاء"
 
-                    # تنسيق الرسالة مع الحكمة (بدون Markdown للحكمة لتجنب أخطاء التنسيق)
+                    # تنسيق الرسالة بشكل جميل ومرتب
                     update_text = (
-                        f"{status_emoji} **{status_text}...**\n\n"
-                        f"{progress_bar}\n"
-                        f"⚡ {speed_text} | ⏱️ ETA: {eta_text}\n"
-                        f"📦 {downloaded_mb:.1f} / {total_mb:.1f} MB\n\n"
-                        f"💭 {self.quote['ar']}\n"
-                        f"💬 {self.quote['en']}"
+                        f"╔═══════════════════════╗\n"
+                        f"║  {status_emoji} **{status_text}**\n"
+                        f"╠═══════════════════════╣\n"
+                        f"║\n"
+                        f"║  {progress_bar}\n"
+                        f"║\n"
+                        f"║  ⚡ السرعة: **{speed_text}**\n"
+                        f"║  ⏱️ المتبقي: **{eta_text}**\n"
+                        f"║  📦 الحجم: **{downloaded_mb:.1f} / {total_mb:.1f} MB**\n"
+                        f"║\n"
+                        f"╠═══════════════════════╣\n"
+                        f"║  💭 _{self.quote['ar']}_\n"
+                        f"║  💬 _{self.quote['en']}_\n"
+                        f"╚═══════════════════════╝"
                     )
 
                     try:
@@ -290,11 +298,22 @@ class DownloadProgressTracker:
                 logger.debug(f"خطأ في تحديث الرسالة: {e}")
 
     def _create_progress_bar(self, percentage):
-        """إنشاء شريط تقدم متحرك مع أيقونات 💠"""
+        """إنشاء شريط تقدم جميل ومرتب"""
         filled = int(percentage / 5)
         empty = 20 - filled
-        bar = '💠' * filled + '⬜' * empty
-        return f"`{bar}` **{percentage}%**"
+
+        # استخدام emoji مختلفة حسب المرحلة
+        if percentage < 25:
+            fill_emoji = '🟦'  # أزرق
+        elif percentage < 50:
+            fill_emoji = '🟨'  # أصفر
+        elif percentage < 75:
+            fill_emoji = '🟧'  # برتقالي
+        else:
+            fill_emoji = '🟩'  # أخضر
+
+        bar = fill_emoji * filled + '⬜' * empty
+        return f"{bar}\n**{percentage}%**"
 
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
@@ -522,19 +541,20 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
 
     # === فحص مدة الفيديو لجميع الأنواع (صوت وفيديو) ===
     user_id = query.from_user.id
-    from database import is_subscribed, is_admin, is_subscription_enabled, get_free_time_limit
+    from database import is_subscribed, is_admin, get_free_time_limit
 
     duration_seconds = info_dict.get('duration', 0)
 
-    # فحص حد المدة الزمنية (للمستخدمين غير المشتركين وغير الأدمن)
-    subscription_enabled = is_subscription_enabled()
-    if subscription_enabled and not is_subscribed(user_id) and not is_admin(user_id):
+    # فحص حد المدة الزمنية (للمستخدمين غير VIP وغير الأدمن)
+    # يطبق دائماً بغض النظر عن حالة نظام الاشتراكات
+    if not is_subscribed(user_id) and not is_admin(user_id):
         if duration_seconds > 0:
             duration_minutes = duration_seconds / 60
             time_limit_minutes = get_free_time_limit()
 
             # -1 يعني غير محدود
             if time_limit_minutes != -1 and duration_minutes > time_limit_minutes:
+                logger.info(f"🚫 رفض تحميل - المدة {duration_minutes:.1f}min > الحد {time_limit_minutes}min للمستخدم {user_id}")
                 keyboard = [[InlineKeyboardButton(
                     "⭐ اشترك في VIP للتحميل غير المحدود",
                     url="https://instagram.com/7kmmy"
@@ -793,8 +813,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             }
         })
     
-    # إعدادات خاصة لـ Instagram
+    # إعدادات خاصة لـ Instagram (Stories + Reels)
     elif is_instagram:
+        # فحص إذا كان story
+        is_story = '/stories/' in url or '/story/' in url
+
         ydl_opts.update({
             'format': 'best',
             'http_headers': {
@@ -802,15 +825,25 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 'Accept': '*/*',
                 'Accept-Language': 'en-US,en;q=0.5',
                 'X-IG-App-ID': '936619743392459',
+                'X-Instagram-AJAX': '1',
+                'X-Requested-With': 'XMLHttpRequest',
             },
             'extractor_args': {
                 'instagram': {
-                    'timeout': 60,
-                    'app_id': '567067343352427',  # Instagram app_id الرسمي
-                    'use_hacks': ['headers']  # استخدام headers محسّنة
+                    'timeout': 90,  # زيادة timeout للستوريات
+                    'app_id': '567067343352427',
+                    'use_hacks': ['headers', 'graphql']  # استخدام graphql للستوريات
                 }
-            }
+            },
+            # إعدادات إضافية للستوريات
+            'sleep_interval': 2 if is_story else 0,  # تأخير بين الطلبات للستوريات
+            'max_sleep_interval': 5 if is_story else 0,
+            'skip_unavailable_fragments': True,
         })
+
+        # للستوريات: يجب أن تكون الكوكيز موجودة
+        if is_story and not cookies_loaded:
+            logger.warning("⚠️ Instagram stories تحتاج كوكيز! قد يفشل التحميل.")
     
     # إعدادات خاصة لـ TikTok - مُحسّنة للصور والفيديوهات
     elif is_tiktok:
