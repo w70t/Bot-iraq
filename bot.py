@@ -48,7 +48,7 @@ from handlers.download import (
     handle_download_cancel,
     handle_video_message
 )
-from handlers.admin import admin_conv_handler, admin_command_simple
+from handlers.admin import admin_conv_handler
 from handlers.general import handle_reactive_response
 from handlers.notifications import (
     send_startup_notification,
