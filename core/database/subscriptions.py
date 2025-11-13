@@ -171,3 +171,17 @@ def get_subscription_price():
     except Exception as e:
         logger.error(f"❌ فشل جلب سعر الاشتراك: {e}")
         return 3.0
+
+
+def remove_subscription(user_id: int):
+    """إلغاء اشتراك المستخدم"""
+    try:
+        users_collection.update_one(
+            {'user_id': user_id},
+            {'$unset': {'subscription_end': ""}}
+        )
+        logger.info(f"✅ تم إلغاء اشتراك المستخدم {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل إلغاء الاشتراك: {e}")
+        return False
