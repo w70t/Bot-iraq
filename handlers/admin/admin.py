@@ -1348,24 +1348,28 @@ async def test_platform_cookie(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         from handlers.cookie_manager import cookie_manager
 
-        # اختبار الكوكيز
-        result = await cookie_manager.test_platform_cookies(platform, test_stories=is_story_test)
+        # اختبار الكوكيز باستخدام validate_cookies
+        result = await cookie_manager.validate_cookies(platform)
 
-        if result.get('success', False):
+        if result:
             status_emoji = "✅"
             status_text = "نجح الاختبار"
+            message_text = (
+                f"{status_emoji} **{status_text}**\n\n"
+                f"📋 **التفاصيل:**\n"
+                f"✅ الكوكيز صالحة وتعمل بشكل صحيح\n"
+            )
+
+            if is_story_test:
+                message_text += "\n📖 تم اختبار الستوري بنجاح"
         else:
             status_emoji = "❌"
             status_text = "فشل الاختبار"
-
-        message_text = (
-            f"{status_emoji} **{status_text}**\n\n"
-            f"📋 **التفاصيل:**\n"
-            f"{result.get('message', 'لا توجد تفاصيل')}\n\n"
-        )
-
-        if is_story_test:
-            message_text += "📖 تم اختبار الستوري\n"
+            message_text = (
+                f"{status_emoji} **{status_text}**\n\n"
+                f"⚠️ الكوكيز غير صالحة أو منتهية الصلاحية\n"
+                f"📌 يُرجى رفع ملف كوكيز جديد"
+            )
 
     except Exception as e:
         logger.error(f"خطأ في اختبار {platform}: {e}")
