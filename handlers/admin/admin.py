@@ -3557,5 +3557,6 @@ admin_conv_handler = ConversationHandler(
         ],
     },
     fallbacks=[CommandHandler('cancel', cancel)],
-    per_message=True  # Track multiple CallbackQueryHandler properly and prevent button spinner issues
+    # ✅ إزالة per_message=True لأنه يمنع الأزرار من العمل عبر رسائل مختلفة
+    # نستخدم الإعدادات الافتراضية: per_chat=True, per_user=True
 )
