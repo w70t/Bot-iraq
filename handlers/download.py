@@ -715,13 +715,25 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                     # Try to decrypt and use encrypted cookies
                     cookie_path = cookie_manager.decrypt_cookie_file(cookie_file)
                     if cookie_path:
-                        ydl_opts['cookiefile'] = cookie_path
-                        cookies_loaded = True
+                        # التحقق من وجود الملف فعلاً
+                        if os.path.exists(cookie_path):
+                            ydl_opts['cookiefile'] = cookie_path
+                            cookies_loaded = True
 
-                        if cookie_file != platform:
-                            logger.info(f"✅ Using encrypted {cookie_file} cookies for {platform} (V5.1 Linked)")
+                            # قراءة عدد الكوكيز للتأكد من صحة الملف
+                            try:
+                                with open(cookie_path, 'r') as f:
+                                    cookie_lines = [line for line in f if line.strip() and not line.startswith('#')]
+                                    logger.info(f"📝 عدد الكوكيز في الملف: {len(cookie_lines)}")
+                            except Exception as read_err:
+                                logger.warning(f"⚠️ لا يمكن قراءة ملف الكوكيز: {read_err}")
+
+                            if cookie_file != platform:
+                                logger.info(f"✅ Using encrypted {cookie_file} cookies for {platform} (V5.1 Linked) - Path: {cookie_path}")
+                            else:
+                                logger.info(f"✅ Using encrypted cookies for {platform} (V5.1) - Path: {cookie_path}")
                         else:
-                            logger.info(f"✅ Using encrypted cookies for {platform} (V5.1)")
+                            logger.error(f"❌ ملف الكوكيز غير موجود: {cookie_path}")
         except Exception as e:
             logger.debug(f"Could not load encrypted cookies: {e}")
 
@@ -1909,7 +1921,32 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ خطأ في التحليل: {e}", exc_info=True)
         error_msg = str(e)
-        
+
+        # ⭐ معالج خاص لأخطاء Instagram Stories
+        if 'instagram:story' in error_msg.lower() or ('instagram' in url.lower() and 'stories' in url.lower()):
+            if 'unreachable' in error_msg.lower() or 'login' in error_msg.lower() or 'cookies' in error_msg.lower():
+                await processing_message.edit_text(
+                    "❌ **فشل تحميل الستوري من Instagram!**\n\n"
+                    "🔐 **السبب:** الستوري يحتاج كوكيز صالحة\n\n"
+                    "💡 **الحلول:**\n\n"
+                    "1️⃣ **جدّد الكوكيز:**\n"
+                    "   • سجل دخول Instagram في المتصفح\n"
+                    "   • استخدم إضافة 'Get cookies.txt LOCALLY'\n"
+                    "   • احفظ الملف وارفعه للبوت\n\n"
+                    "2️⃣ **تأكد من الكوكيز:**\n"
+                    "   • يجب أن تكون حديثة (أقل من أسبوع)\n"
+                    "   • من حساب مسجل دخول بالفعل\n"
+                    "   • تحتوي sessionid و ds_user_id\n\n"
+                    "3️⃣ **تحقق من الستوري:**\n"
+                    "   • الستوريات تختفي بعد 24 ساعة!\n"
+                    "   • تأكد أنه لا يزال موجوداً\n\n"
+                    "📝 **رفع الكوكيز:**\n"
+                    "/admin → إدارة الكوكيز → Instagram\n\n"
+                    "⚠️ إذا جددت الكوكيز الآن، جرب مرة أخرى بعد 10 ثواني!",
+                    parse_mode='Markdown'
+                )
+                return
+
         # ⭐ معالج خاص لأخطاء Pinterest
         if 'pinterest' in error_msg.lower():
             if 'no video formats found' in error_msg.lower():
