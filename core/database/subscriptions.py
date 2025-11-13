@@ -1,13 +1,9 @@
 from datetime import datetime
 from .base import users_collection, settings_collection
+from config.logger import get_logger
 
-# استخدام logger من config
-try:
-    from config.logger import get_logger
-except ImportError:
-    import logging
-    logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-    logger = logging.getLogger(__name__)
+# إنشاء logger instance
+logger = get_logger(__name__)
 
 
 def is_subscribed(user_id: int) -> bool:
