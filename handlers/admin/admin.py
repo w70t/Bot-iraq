@@ -3422,6 +3422,7 @@ admin_conv_handler = ConversationHandler(
     ],
     states={
         MAIN_MENU: [
+            CommandHandler('admin', admin_panel),  # ✅ السماح بإعادة فتح اللوحة من داخل conversation
             CallbackQueryHandler(admin_panel, pattern='^admin$'),  # Handle "Admin" button clicks
             CallbackQueryHandler(admin_panel, pattern='^admin_panel$'),  # Handle "Admin Panel" button clicks
             CallbackQueryHandler(admin_panel, pattern='^admin_main$'),  # Handle "Back to main" button clicks
@@ -3556,7 +3557,10 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },
-    fallbacks=[CommandHandler('cancel', cancel)],
+    fallbacks=[
+        CommandHandler('cancel', cancel),
+        CommandHandler('admin', admin_panel),  # ✅ السماح بإعادة فتح اللوحة من أي state
+    ],
     # ✅ إزالة per_message=True لأنه يمنع الأزرار من العمل عبر رسائل مختلفة
     # نستخدم الإعدادات الافتراضية: per_chat=True, per_user=True
 )
