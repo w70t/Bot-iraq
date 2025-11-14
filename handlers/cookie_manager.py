@@ -58,7 +58,7 @@ PLATFORM_PATTERNS = {
 # Platform Cookie Linking (V5.1)
 # Defines which platforms share the same cookie file
 PLATFORM_COOKIE_LINKS = {
-    'pinterest': 'instagram',      # Pinterest uses Instagram cookies
+    'pinterest': 'pinterest',       # Pinterest uses its own cookies
     'reddit': 'facebook',           # Reddit uses Facebook cookies
     'vimeo': 'general',             # Vimeo uses general cookies
     'dailymotion': 'general',       # Dailymotion uses general cookies
