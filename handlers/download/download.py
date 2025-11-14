@@ -147,52 +147,23 @@ async def track_limit_rejection(context: ContextTypes.DEFAULT_TYPE, user_id: int
         logger.error(f"Error in track_limit_rejection: {e}")
 
 
-# ═══════════════════════════════════════════════════════════════
-#  Anime Quotes System (Arabic + English)
-# ═══════════════════════════════════════════════════════════════
-ANIME_QUOTES = [
-    {"ar": "الأحلام لا تتحقق من تلقاء نفسها، عليك أن تعمل من أجلها", "en": "Dreams don't work unless you do"},
-    {"ar": "لا تستسلم أبداً، حتى لو كانت الأمور صعبة", "en": "Never give up, even if things get tough"},
-    {"ar": "القوة الحقيقية تأتي من الداخل", "en": "True strength comes from within"},
-    {"ar": "الفشل مجرد فرصة للبدء من جديد بذكاء أكبر", "en": "Failure is just a chance to start again more intelligently"},
-    {"ar": "كن الشخص الذي تريد أن تكونه، لا ما يريده الآخرون", "en": "Be who you want to be, not what others want"},
-    {"ar": "الطريق إلى النجاح مليء بالتحديات، لكن المكافأة تستحق العناء", "en": "The road to success is full of challenges, but the reward is worth it"},
-    {"ar": "لا يمكنك تغيير الماضي، لكن يمكنك صنع المستقبل", "en": "You can't change the past, but you can create the future"},
-    {"ar": "الشجاعة ليست عدم الخوف، بل مواجهة الخوف", "en": "Courage is not the absence of fear, but facing it"},
-    {"ar": "أحياناً أصغر خطوة في الاتجاه الصحيح تكون أكبر خطوة في حياتك", "en": "Sometimes the smallest step in the right direction is the biggest step of your life"},
-    {"ar": "النجاح ليس النهاية، والفشل ليس القاتل: إنها الشجاعة للاستمرار هي المهمة", "en": "Success is not final, failure is not fatal: it's the courage to continue that counts"},
-    {"ar": "لا تنتظر الفرص، اصنعها بنفسك", "en": "Don't wait for opportunities, create them yourself"},
-    {"ar": "كل يوم هو فرصة جديدة لتصبح أفضل", "en": "Every day is a new opportunity to be better"},
-    {"ar": "الإيمان بالنفس هو أول سر من أسرار النجاح", "en": "Believing in yourself is the first secret to success"},
-    {"ar": "لا تقارن نفسك بالآخرين، قارن نفسك بمن كنت بالأمس", "en": "Don't compare yourself to others, compare yourself to who you were yesterday"},
-    {"ar": "العقبات هي تلك الأشياء المخيفة التي تراها عندما تبعد عينيك عن هدفك", "en": "Obstacles are those frightful things you see when you take your eyes off your goal"},
-    {"ar": "النجاح يتطلب المثابرة والعزيمة", "en": "Success requires perseverance and determination"},
-    {"ar": "الحياة قصيرة جداً، لا تضيعها في الأشياء السلبية", "en": "Life is too short to waste on negative things"},
-    {"ar": "التغيير يبدأ منك أنت", "en": "Change starts with you"},
-    {"ar": "لا شيء مستحيل مع الإرادة القوية", "en": "Nothing is impossible with strong will"},
-    {"ar": "أنت أقوى مما تعتقد", "en": "You are stronger than you think"}
-]
-
 class DownloadProgressTracker:
-    """تتبع تقدم التحميل مع عداد نسبة مئوية + اقتباسات أنمي عشوائية"""
+    """تتبع تقدم التحميل - نسخة مبسطة"""
     def __init__(self, message, lang, loop, is_audio=False):
         self.message = message
         self.lang = lang
-        self.loop = loop  # حفظ الـ event loop للاستخدام من thread آخر
+        self.loop = loop
         self.last_update_time = 0
         self.last_percentage = -1
-        self.is_audio = is_audio  # تتبع ما إذا كان تحميل صوتي
-        self.extraction_notified = False  # لمنع إرسال إشعار الاستخراج مرات متعددة
-        # اختيار اقتباس عشوائي في بداية كل تحميل
-        self.quote = random.choice(ANIME_QUOTES)
-        logger.info(f"💬 تم اختيار حكمة عشوائية: {self.quote['ar'][:30]}...")
+        self.is_audio = is_audio
+        self.extraction_notified = False
 
     def progress_hook(self, d):
         if d['status'] == 'downloading':
             try:
                 current_time = time.time()
-                # تحديث كل 1.5 ثانية (سلس وسريع)
-                if current_time - self.last_update_time < 1.5:
+                # تحديث كل 2 ثانية
+                if current_time - self.last_update_time < 2:
                     return
 
                 downloaded = d.get('downloaded_bytes', 0)
@@ -201,66 +172,22 @@ class DownloadProgressTracker:
                 if total > 0:
                     percentage = int((downloaded / total) * 100)
 
-                    # تحديث كل 3% (سلاسة أكثر)
-                    if abs(percentage - self.last_percentage) < 3 and current_time - self.last_update_time < 3:
+                    # تحديث كل 5%
+                    if abs(percentage - self.last_percentage) < 5:
                         return
 
                     self.last_percentage = percentage
                     self.last_update_time = current_time
 
-                    speed = d.get('speed', 0)
-                    downloaded_mb = downloaded / (1024 * 1024)
-                    total_mb = total / (1024 * 1024)
-                    speed_text = f"{speed / 1024 / 1024:.2f} MB/s" if speed else "حساب..."
+                    # شريط تقدم بسيط
+                    filled = int(percentage / 5)
+                    empty = 20 - filled
+                    progress_bar = '▓' * filled + '░' * empty
 
-                    # حساب الوقت المتبقي
-                    eta = d.get('eta', 0)
-                    if eta and eta > 0:
-                        eta_mins = eta // 60
-                        eta_secs = eta % 60
-                        eta_text = f"{int(eta_mins)}:{int(eta_secs):02d}"
-                    else:
-                        eta_text = "حساب..."
-
-                    progress_bar = self._create_progress_bar(percentage)
-
-                    # رموز تفاعلية حسب التقدم
-                    if percentage < 25:
-                        status_emoji = "📥"
-                        status_text = "بدء التحميل"
-                    elif percentage < 50:
-                        status_emoji = "⬇️"
-                        status_text = "جاري التحميل"
-                    elif percentage < 75:
-                        status_emoji = "⚡"
-                        status_text = "سرعة عالية"
-                    elif percentage < 95:
-                        status_emoji = "🔄"
-                        status_text = "جاري المعالجة"
-                    else:
-                        status_emoji = "✨"
-                        status_text = "على وشك الانتهاء"
-
-                    # تنسيق الرسالة بشكل جميل ومرتب
-                    update_text = (
-                        f"╔═══════════════════════╗\n"
-                        f"║  {status_emoji} **{status_text}**\n"
-                        f"╠═══════════════════════╣\n"
-                        f"║\n"
-                        f"║  {progress_bar}\n"
-                        f"║\n"
-                        f"║  ⚡ السرعة: **{speed_text}**\n"
-                        f"║  ⏱️ المتبقي: **{eta_text}**\n"
-                        f"║  📦 الحجم: **{downloaded_mb:.1f} / {total_mb:.1f} MB**\n"
-                        f"║\n"
-                        f"╠═══════════════════════╣\n"
-                        f"║  💭 _{self.quote['ar']}_\n"
-                        f"║  💬 _{self.quote['en']}_\n"
-                        f"╚═══════════════════════╝"
-                    )
+                    # رسالة بسيطة
+                    update_text = f"⏬ جاري التحميل...\n\n{progress_bar} {percentage}%"
 
                     try:
-                        # استخدام run_coroutine_threadsafe لأننا في thread مختلف
                         asyncio.run_coroutine_threadsafe(
                             self._safe_update(update_text),
                             self.loop
@@ -272,48 +199,24 @@ class DownloadProgressTracker:
                 log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
 
         elif d['status'] == 'finished':
-            # عند انتهاء التحميل، إذا كان صوتياً، أخبر المستخدم أن الاستخراج سيبدأ
+            # عند انتهاء التحميل للصوت
             if self.is_audio and not self.extraction_notified:
                 self.extraction_notified = True
                 try:
                     asyncio.run_coroutine_threadsafe(
-                        self._safe_update(
-                            "✅ **اكتمل التحميل!**\n\n"
-                            "🎵 **جاري استخراج الصوت...**\n\n"
-                            "🔄 يتم تحويل الفيديو إلى MP3\n"
-                            "⏳ قد يستغرق 1-3 دقائق حسب طول المقطع..."
-                        ),
+                        self._safe_update("✅ اكتمل التحميل!\n🎵 جاري استخراج الصوت..."),
                         self.loop
                     )
                 except Exception as e:
                     logger.debug(f"تحديث حالة الاستخراج: {e}")
 
     async def _safe_update(self, text):
-        """تحديث آمن للرسالة مع معالجة الأخطاء"""
+        """تحديث آمن للرسالة"""
         try:
-            await self.message.edit_text(text, parse_mode='Markdown')
+            await self.message.edit_text(text)
         except Exception as e:
-            # تجاهل أخطاء "message not modified" و "message to edit not found"
             if "message is not modified" not in str(e).lower() and "message to edit not found" not in str(e).lower():
                 logger.debug(f"خطأ في تحديث الرسالة: {e}")
-
-    def _create_progress_bar(self, percentage):
-        """إنشاء شريط تقدم جميل ومرتب"""
-        filled = int(percentage / 5)
-        empty = 20 - filled
-
-        # استخدام emoji مختلفة حسب المرحلة
-        if percentage < 25:
-            fill_emoji = '🟦'  # أزرق
-        elif percentage < 50:
-            fill_emoji = '🟨'  # أصفر
-        elif percentage < 75:
-            fill_emoji = '🟧'  # برتقالي
-        else:
-            fill_emoji = '🟩'  # أخضر
-
-        bar = fill_emoji * filled + '⬜' * empty
-        return f"{bar}\n**{percentage}%**"
 
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
