@@ -561,11 +561,12 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # بعض المنصات تحتاج format بسيط
+    # بعض المنصات تحتاج format بسيط ومرن
     simple_format_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
     if simple_format_platforms and quality != 'audio':
-        # استخدام format بسيط للمنصات التي لا تدعم فصل الفيديو والصوت
-        format_choice = 'best'
+        # استخدام format مرن للمنصات التي لا تدعم فصل الفيديو والصوت
+        # نحاول عدة خيارات: أفضل فيديو، أو أي شيء متاح
+        format_choice = 'best/bestvideo/worst'
 
     # إعدادات أساسية
     ydl_opts = {
