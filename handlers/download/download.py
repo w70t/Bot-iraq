@@ -1764,14 +1764,19 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # إذا كان الاشتراك معطلاً، السماح بالتحميل بدون قيود
     
     processing_message = await update.message.reply_text("🔍 جاري التحليل...")
-    
+
     try:
         # إعدادات التحليل
         ydl_opts = get_ydl_opts_for_platform(url)
         ydl_opts['skip_download'] = True  # فقط للتحليل
-        
+
+        # إزالة format في مرحلة التحليل لتجنب مشاكل التوافق
+        # سنحدد format فقط عند التحميل الفعلي
+        if 'format' in ydl_opts:
+            del ydl_opts['format']
+
         loop = asyncio.get_event_loop()
-        
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
         
