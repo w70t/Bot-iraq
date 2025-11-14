@@ -1051,19 +1051,10 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     is_user_admin = is_admin(user_id)
     is_subscribed_user = is_subscribed(user_id)
     config = get_config()
-    
-    # اختيار حكمة عشوائية للعرض في رسالة البداية
-    import random
-    random_quote = random.choice(ANIME_QUOTES)
 
     processing_message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=(
-            "📥 **جاري التحضير...**\n\n"
-            "⏳ الرجاء الانتظار...\n\n"
-            f"💭 {random_quote['ar']}\n"
-            f"💬 {random_quote['en']}"
-        ),
+        text="📥 جاري التحضير...\n⏳ الرجاء الانتظار...",
         parse_mode='Markdown'
     )
     
