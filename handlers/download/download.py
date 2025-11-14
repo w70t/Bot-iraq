@@ -561,11 +561,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # بعض المنصات تحتاج ترك format فارغ (auto selection)
-    auto_format_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
-    if auto_format_platforms and quality != 'audio':
-        # ترك format فارغ = yt-dlp يختار تلقائياً أفضل format متاح
-        format_choice = None
+    # بعض المنصات تحتاج format selector مرن جداً
+    simple_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
+    if simple_platforms and quality != 'audio':
+        # محاولة عدة خيارات بالترتيب
+        format_choice = 'b/bv/bv*+ba/b*/w'  # best, best video, best video+audio, best any, worst
 
     # إعدادات أساسية
     ydl_opts = {
