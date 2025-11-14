@@ -186,8 +186,9 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
     lang = get_user_language(user_id)
     
     # استيراد محلي لتجنب الاستيراد الدائري
-    from handlers.account import account_info
-    from handlers.referral import referral_command
+    from handlers.user.account import account_info
+    from handlers.user.referral import referral_command
+    from handlers.user.support_handler import show_support_message
     
     # تحديث آخر تفاعل
     update_user_interaction(user_id)
@@ -335,7 +336,6 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     elif text in ["🎁 دعم صاحب البوت", "🎁 Support the Creator"]:
         # استخدام معالج الدعم الجديد
-        from handlers.support_handler import show_support_message
         await show_support_message(update, context)
 
     elif text in ["🌐 تغيير اللغة", "🌐 Change Language"]:
