@@ -1,9 +1,13 @@
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
+import logging
 
 from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
 from utils import get_message
+
+# إعداد logger
+logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -12,7 +16,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     user = update.message.from_user
     user_id = user.id
-    
+
+    logger.info("=" * 60)
+    logger.info(f"🎬 [START] User {user_id} ({user.full_name}) بدأ البوت")
+    logger.info("=" * 60)
+
     # التحقق من وجود كود إحالة في deep link
     # الصيغة: /start REF_XXXXX
     referral_code = None
@@ -48,13 +56,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [["العربية 🇸🇦", "English 🇬🇧"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, one_time_keyboard=True, resize_keyboard=True)
-    
+
     welcome_text = (
         "🎉 **مرحباً! Welcome!** 🎉\n\n"
         "🌍 **اختر لغتك | Choose your language:**"
     )
-    
+
+    logger.info(f"✅ [START] إرسال رسالة الترحيب مع أزرار اللغة للمستخدم {user_id}")
+    logger.info(f"🔘 [START] الأزرار المرسلة: {keyboard}")
+
     await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    logger.info(f"✅ [START] تم إرسال رسالة الترحيب بنجاح للمستخدم {user_id}")
+    logger.info("=" * 60)
 
 async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -63,12 +77,18 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     user_id = user.id
     lang_choice = update.message.text
-    
+
+    logger.info("=" * 60)
+    logger.info(f"🌍 [SELECT_LANGUAGE] المستخدم {user_id} ({user.full_name}) اختار: {lang_choice}")
+    logger.info("=" * 60)
+
     # تحديد اللغة
     if "English" in lang_choice or "🇬🇧" in lang_choice:
         lang_code = "en"
     else:
         lang_code = "ar"
+
+    logger.info(f"✅ [SELECT_LANGUAGE] اللغة المحددة: {lang_code}")
 
     update_user_language(user_id, lang_code)
 
@@ -90,6 +110,8 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = create_main_keyboard(lang_code)
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+    logger.info(f"🔘 [SELECT_LANGUAGE] أزرار القائمة الرئيسية: {keyboard}")
+
     # إنشاء زر قناة التحديثات
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     channel_keyboard = [
@@ -98,12 +120,16 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     channel_markup = InlineKeyboardMarkup(channel_keyboard)
 
+    logger.info(f"✅ [SELECT_LANGUAGE] إرسال رسالة الترحيب مع زر القناة...")
+
     # إرسال رسالة الترحيب مع زر القناة
     await update.message.reply_text(
         welcome_message,
         reply_markup=channel_markup,
         parse_mode='Markdown'
     )
+
+    logger.info(f"✅ [SELECT_LANGUAGE] إرسال القائمة الرئيسية...")
 
     # إرسال لوحة المفاتيح الرئيسية بعد ذلك
     welcome_keyboard_text = get_message(lang_code, "welcome").format(name=user.first_name)
@@ -112,6 +138,9 @@ async def select_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup,
         parse_mode='Markdown'
     )
+
+    logger.info(f"✅ [SELECT_LANGUAGE] تم إرسال جميع الرسائل بنجاح للمستخدم {user_id}")
+    logger.info("=" * 60)
 
 def create_main_keyboard(lang_code: str):
     """

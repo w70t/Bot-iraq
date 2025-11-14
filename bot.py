@@ -502,10 +502,13 @@ def main() -> None:
         logger.error(f"❌ فشل تسجيل معالج رفع ملفات Cookies: {e}")
 
     # 5. Handler لاختيار اللغة
+    logger.info("🔧 [BOT] تسجيل handler لاختيار اللغة...")
+    logger.info("🔧 [BOT] Pattern: ^(English 🇬🇧|العربية 🇸🇦)$")
     application.add_handler(MessageHandler(
-        filters.Regex("^(English 🇬🇧|العربية 🇸🇦)$"), 
+        filters.Regex("^(English 🇬🇧|العربية 🇸🇦)$"),
         select_language
     ))
+    logger.info("✅ [BOT] تم تسجيل handler لاختيار اللغة بنجاح")
     
     # 6. Handler لأزرار القائمة الرئيسية
     application.add_handler(MessageHandler(
@@ -618,6 +621,20 @@ def main() -> None:
 
     # تسجيل معالج تتبع الأوامر
     application.add_handler(MessageHandler(filters.COMMAND, debug_command_handler), group=-1)
+
+    # 11.7.3. Debug: معالج عام لتتبع جميع الرسائل النصية
+    async def debug_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """معالج لتتبع جميع الرسائل النصية للتصحيح"""
+        if update.message and update.message.text and not update.message.text.startswith('/'):
+            logger.info("=" * 60)
+            logger.info(f"📝 [DEBUG_TEXT] رسالة نصية من المستخدم: {update.effective_user.id}")
+            logger.info(f"📝 [DEBUG_TEXT] النص: '{update.message.text}'")
+            logger.info(f"📝 [DEBUG_TEXT] طول النص: {len(update.message.text)} حرف")
+            logger.info(f"📝 [DEBUG_TEXT] Unicode representation: {repr(update.message.text)}")
+            logger.info("=" * 60)
+
+    # تسجيل معالج تتبع النصوص
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, debug_text_handler), group=-3)
 
     # 11.8. Handlers للأزرار الداخلية في لوحة الادمن (قبل ConversationHandler للأولوية)
     # ملاحظة: معظم هذه الدوال الآن داخل admin_conv_handler
