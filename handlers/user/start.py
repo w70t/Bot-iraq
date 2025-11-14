@@ -282,42 +282,42 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
         price = get_subscription_price()
 
         subscribe_message = (
-            "👑 **باقة VIP المميزة!**\n\n"
-            "✨ **المميزات:**\n"
+            "👑 <b>باقة VIP المميزة!</b>\n\n"
+            "✨ <b>المميزات:</b>\n"
             "♾️ تحميلات غير محدودة\n"
             "⏱️ فيديوهات بأي طول\n"
             "🎨 بدون لوجو\n"
             "📺 جودات عالية 4K/HD\n"
             "⚡ أولوية في المعالجة\n"
             "🎵 تحميل صوتي MP3\n\n"
-            f"💰 **السعر:** ${price} شهرياً\n\n"
-            "📞 **للاشتراك، تواصل معنا:**\n"
+            f"💰 <b>السعر:</b> ${price} شهرياً\n\n"
+            "📞 <b>للاشتراك، تواصل معنا:</b>\n"
             "📸 Instagram: @7kmmy\n"
             "🔗 https://instagram.com/7kmmy\n\n"
-            "📢 **تابعنا على Telegram:**\n"
+            "📢 <b>تابعنا على Telegram:</b>\n"
             "🔗 https://t.me/iraq_7kmmy\n\n"
-            "💡 **انقر على الأزرار أدناه للتفاعل**"
+            "💡 <b>انقر على الأزرار أدناه للتفاعل</b>"
         ) if lang == "ar" else (
-            "👑 **VIP Premium Plan!**\n\n"
-            "✨ **Features:**\n"
+            "👑 <b>VIP Premium Plan!</b>\n\n"
+            "✨ <b>Features:</b>\n"
             "♾️ Unlimited downloads\n"
             "⏱️ Any video length\n"
             "🎨 No watermark\n"
             "📺 High quality 4K/HD\n"
             "⚡ Priority processing\n"
             "🎵 Audio download MP3\n\n"
-            f"💰 **Price:** ${price} monthly\n\n"
-            "📞 **To subscribe, contact us:**\n"
+            f"💰 <b>Price:</b> ${price} monthly\n\n"
+            "📞 <b>To subscribe, contact us:</b>\n"
             "📸 Instagram: @7kmmy\n"
             "🔗 https://instagram.com/7kmmy\n\n"
-            "📢 **Follow us on Telegram:**\n"
+            "📢 <b>Follow us on Telegram:</b>\n"
             "🔗 https://t.me/iraq_7kmmy\n\n"
-            "💡 **Click the buttons below to interact**"
+            "💡 <b>Click the buttons below to interact</b>"
         )
-        
+
         # إنشاء أزرار تفاعلية
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        
+
         if lang == "ar":
             keyboard = [
                 [InlineKeyboardButton("💳 دفعة الآن - Instagram", callback_data="vip_payment")],
@@ -330,9 +330,9 @@ async def handle_menu_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("📞 Contact Us", callback_data="contact_support")],
                 [InlineKeyboardButton("ℹ️ Plan Details", callback_data="vip_details")]
             ]
-        
+
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(subscribe_message, reply_markup=reply_markup, parse_mode='Markdown')
+        await update.message.reply_text(subscribe_message, reply_markup=reply_markup, parse_mode='HTML')
 
     elif text in ["🎁 دعم صاحب البوت", "🎁 Support the Creator"]:
         # استخدام معالج الدعم الجديد
