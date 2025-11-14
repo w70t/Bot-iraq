@@ -137,7 +137,7 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
         logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
 
         allowed_platforms = get_allowed_platforms()
-        total_platforms = 10
+        total_platforms = 10  # جميع المنصات المدعومة
         enabled_platforms = len(allowed_platforms)
         library_status = f"{enabled_platforms}/{total_platforms} منصات"
 
@@ -249,7 +249,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings = get_library_settings()
         allowed_platforms = get_allowed_platforms()
         # ⭐ تحديث العدد الإجمالي للمنصات المدعومة
-        total_platforms = 10  # YouTube, Facebook, Instagram, TikTok, Pinterest, Twitter, Reddit, Vimeo, Dailymotion, Twitch
+        total_platforms = 10  # جميع المنصات المدعومة
         enabled_platforms = len(allowed_platforms)
         library_status = f"{enabled_platforms}/{total_platforms} منصات"
 
@@ -1222,6 +1222,7 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # قائمة المنصات
     keyboard = [
+        [InlineKeyboardButton("🎥 YouTube", callback_data="platform_youtube")],
         [InlineKeyboardButton("📘 Facebook", callback_data="platform_facebook")],
         [InlineKeyboardButton("📸 Instagram", callback_data="platform_instagram")],
         [InlineKeyboardButton("🎵 TikTok", callback_data="platform_tiktok")],
@@ -1253,6 +1254,7 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
     platform = query.data.replace('platform_', '')
 
     platform_names = {
+        'youtube': 'YouTube',
         'facebook': 'Facebook',
         'instagram': 'Instagram',
         'tiktok': 'TikTok',
@@ -1265,6 +1267,7 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
     }
 
     platform_emojis = {
+        'youtube': '🎥',
         'facebook': '📘',
         'instagram': '📸',
         'tiktok': '🎵',
@@ -1408,6 +1411,7 @@ async def upload_platform_cookie_start(update: Update, context: ContextTypes.DEF
     context.user_data['upload_platform'] = platform
 
     platform_names = {
+        'youtube': 'YouTube',
         'facebook': 'Facebook',
         'instagram': 'Instagram',
         'tiktok': 'TikTok',
@@ -3134,11 +3138,16 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
         if save_result['success']:
             # نجاح
             platform_names = {
+                'youtube': 'YouTube',
                 'facebook': 'Facebook',
                 'instagram': 'Instagram',
                 'tiktok': 'TikTok',
-                'youtube': 'YouTube',
-                'twitter': 'Twitter/X'
+                'pinterest': 'Pinterest',
+                'twitter': 'Twitter/X',
+                'reddit': 'Reddit',
+                'vimeo': 'Vimeo',
+                'dailymotion': 'Dailymotion',
+                'twitch': 'Twitch'
             }
             platform_name = platform_names.get(platform, platform.capitalize())
 
