@@ -561,16 +561,14 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # بعض المنصات تحتاج format بسيط ومرن
-    simple_format_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
-    if simple_format_platforms and quality != 'audio':
-        # استخدام format مرن للمنصات التي لا تدعم فصل الفيديو والصوت
-        # نحاول عدة خيارات: أفضل فيديو، أو أي شيء متاح
-        format_choice = 'best/bestvideo/worst'
+    # بعض المنصات تحتاج ترك format فارغ (auto selection)
+    auto_format_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
+    if auto_format_platforms and quality != 'audio':
+        # ترك format فارغ = yt-dlp يختار تلقائياً أفضل format متاح
+        format_choice = None
 
     # إعدادات أساسية
     ydl_opts = {
-        'format': format_choice,
         'outtmpl': os.path.join(VIDEO_PATH, '%(title).60s.%(ext)s'),  # تقصير تلقائي لـ 60 حرف
         'quiet': False,
         'no_warnings': False,
@@ -586,6 +584,10 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         # إعدادات التوافق العامة
         'compat_opts': ['no-youtube-unavailable-videos'],
     }
+
+    # إضافة format فقط إذا كان محدداً (بعض المنصات تحتاج auto selection)
+    if format_choice is not None:
+        ydl_opts['format'] = format_choice
 
     # دعم cookies - Auto-Detection V5.1 with Platform Linking
     cookies_loaded = False
