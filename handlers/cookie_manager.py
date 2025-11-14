@@ -55,19 +55,18 @@ PLATFORM_PATTERNS = {
     'twitch': ['twitch.tv']
 }
 
-# Platform Cookie Linking (V5.1)
-# Defines which platforms share the same cookie file
+# Platform Cookie Linking (V5.2)
+# Each platform uses its own cookie file
 PLATFORM_COOKIE_LINKS = {
-    'pinterest': 'pinterest',       # Pinterest uses its own cookies
-    'reddit': 'facebook',           # Reddit uses Facebook cookies
-    'vimeo': 'general',             # Vimeo uses general cookies
-    'dailymotion': 'general',       # Dailymotion uses general cookies
-    'twitch': 'general',            # Twitch uses general cookies
-    'twitter': 'general',           # Twitter uses general cookies
-    # Direct platforms (use their own cookies)
     'facebook': 'facebook',
     'instagram': 'instagram',
     'tiktok': 'tiktok',
+    'pinterest': 'pinterest',
+    'twitter': 'twitter',
+    'reddit': 'reddit',
+    'vimeo': 'vimeo',
+    'dailymotion': 'dailymotion',
+    'twitch': 'twitch',
     'youtube': None                 # YouTube doesn't need cookies
 }
 
