@@ -561,10 +561,10 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # بعض المنصات تحتاج format selector مرن جداً
-    simple_platforms = is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch
-    if simple_platforms and quality != 'audio':
-        # محاولة عدة خيارات بالترتيب
+    # معظم المنصات تحتاج format selector مرن جداً لتجنب أخطاء "format not available"
+    flexible_platforms = is_facebook or is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter
+    if flexible_platforms and quality != 'audio':
+        # محاولة عدة خيارات بالترتيب - مرن للغاية
         format_choice = 'b/bv/bv*+ba/b*/w'  # best, best video, best video+audio, best any, worst
 
     # إعدادات أساسية
@@ -649,35 +649,39 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         except Exception as e:
             logger.debug(f"Could not load encrypted cookies: {e}")
 
-        # 2️⃣ Try browser cookies if encrypted cookies not available
+        # 2️⃣ Try browser cookies if encrypted cookies not available (silent fallback)
         if not cookies_loaded:
+            # محاولة Chrome (بشكل صامت)
             try:
                 ydl_opts['cookiesfrombrowser'] = ('chrome',)
                 cookies_loaded = True
                 logger.info("✅ Using cookies from Chrome browser")
-            except Exception as e:
-                logger.debug(f"Could not load Chrome cookies: {e}")
-                # محاولة Firefox
+            except:
+                pass  # تجاهل أخطاء Chrome بالكامل
+
+            # محاولة Firefox إذا فشل Chrome
+            if not cookies_loaded:
                 try:
                     ydl_opts['cookiesfrombrowser'] = ('firefox',)
                     cookies_loaded = True
                     logger.info("✅ Using cookies from Firefox browser")
-                except Exception as e2:
-                    logger.debug(f"Could not load Firefox cookies: {e2}")
+                except:
+                    pass  # تجاهل أخطاء Firefox بالكامل
 
-                    # 3️⃣ محاولة تحميل ملفات cookies.txt خاصة بكل منصة (fallback)
-                    platform_cookies = None
-                    if is_tiktok and os.path.exists('cookies/tiktok.txt'):
-                        platform_cookies = 'cookies/tiktok.txt'
-                    elif is_facebook and os.path.exists('cookies/facebook.txt'):
-                        platform_cookies = 'cookies/facebook.txt'
-                    elif is_instagram and os.path.exists('cookies/instagram.txt'):
-                        platform_cookies = 'cookies/instagram.txt'
+        # 3️⃣ محاولة تحميل ملفات cookies.txt خاصة بكل منصة (fallback)
+        if not cookies_loaded:
+            platform_cookies = None
+            if is_tiktok and os.path.exists('cookies/tiktok.txt'):
+                platform_cookies = 'cookies/tiktok.txt'
+            elif is_facebook and os.path.exists('cookies/facebook.txt'):
+                platform_cookies = 'cookies/facebook.txt'
+            elif is_instagram and os.path.exists('cookies/instagram.txt'):
+                platform_cookies = 'cookies/instagram.txt'
 
-                    if platform_cookies:
-                        ydl_opts['cookiefile'] = platform_cookies
-                        cookies_loaded = True
-                        logger.info(f"✅ Using platform-specific cookies from {platform_cookies}")
+            if platform_cookies:
+                ydl_opts['cookiefile'] = platform_cookies
+                cookies_loaded = True
+                logger.info(f"✅ Using platform-specific cookies from {platform_cookies}")
 
     # 4️⃣ إذا فشل تحميل cookies من المتصفح والملفات الخاصة، استخدم ملف cookies.txt العام
     if not cookies_loaded and os.path.exists('cookies.txt'):
