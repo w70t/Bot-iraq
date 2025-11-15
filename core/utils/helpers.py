@@ -382,10 +382,10 @@ def _send_telegram_video(chat_id: str, video_path: str, caption: str):
 
     try:
         api_url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
+        # لا نستخدم parse_mode لتجنب مشاكل parsing مع الرموز الخاصة في عنوان الفيديو
         data = {
             "chat_id": chat_id,
-            "caption": caption,
-            "parse_mode": "Markdown"
+            "caption": caption
         }
 
         # إذا كان الفيديو رابط URL
