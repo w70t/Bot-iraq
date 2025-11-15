@@ -747,13 +747,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     
     # إعدادات خاصة لـ Facebook
     elif is_facebook:
+        # فحص إذا كان story
+        is_story = '/stories/' in url or '/story/' in url
+
         ydl_opts.update({
             'format': 'best',  # Facebook يحتاج 'best' فقط
             'extractor_args': {
                 'facebook': {
-                    'timeout': 60,
+                    'timeout': 90 if is_story else 60,  # timeout أطول للستوريات
                     'app_id': '87741124305',  # Facebook app_id للوصول إلى API
-                    'use_hacks': ['headers']  # استخدام headers محسّنة
+                    'use_hacks': ['headers', 'graphql'] if is_story else ['headers']  # graphql للستوريات
                 }
             },
             # User-Agent مهم لـ Facebook
@@ -762,8 +765,16 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Sec-Fetch-Mode': 'navigate',
-            }
+            },
+            # إعدادات إضافية للستوريات
+            'sleep_interval': 2 if is_story else 0,
+            'max_sleep_interval': 5 if is_story else 0,
+            'skip_unavailable_fragments': True,
         })
+
+        # للستوريات: يجب أن تكون الكوكيز موجودة
+        if is_story and not cookies_loaded:
+            logger.warning("⚠️ Facebook stories تحتاج كوكيز! قد يفشل التحميل.")
     
     # إعدادات خاصة لـ Instagram (Stories + Reels)
     elif is_instagram:
@@ -2239,6 +2250,27 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ⭐ معالج محسّن لأخطاء Facebook
         if 'facebook' in error_msg.lower() or 'facebook.com' in url.lower() or 'fb.watch' in url.lower() or 'fb.com' in url.lower():
             logger.error(f"❌ [Facebook] خطأ في التحميل: {error_msg[:200]}")
+
+            # معالجة خاصة لـ Facebook Stories
+            if '/stories/' in url.lower() and ('unsupported url' in error_msg.lower() or 'unsupported' in error_msg.lower()):
+                await processing_message.edit_text(
+                    "❌ **Facebook Stories غير مدعومة حالياً!**\n\n"
+                    "😔 **للأسف:** تحميل Facebook Stories لا يعمل بشكل جيد في الوقت الحالي بسبب قيود Facebook.\n\n"
+                    "💡 **حلول بديلة:**\n\n"
+                    "1️⃣ **تسجيل الشاشة:**\n"
+                    "   • استخدم تطبيق تسجيل شاشة على الهاتف\n"
+                    "   • شاهد الستوري وسجله\n\n"
+                    "2️⃣ **طرق أخرى:**\n"
+                    "   • جرب مواقع تحميل Stories خارجية\n"
+                    "   • استخدم extensions في المتصفح\n\n"
+                    "3️⃣ **فيديوهات Facebook العادية:**\n"
+                    "   • البوت يدعم الفيديوهات العادية ✅\n"
+                    "   • جرب رابط منشور عادي بدلاً من Story\n\n"
+                    "📢 **ملاحظة:** نعمل على تحسين دعم Facebook Stories قريباً!",
+                    parse_mode='Markdown'
+                )
+                return
+
             if 'login' in error_msg.lower() or 'private' in error_msg.lower():
                 await processing_message.edit_text(
                     "❌ **فشل تحميل الفيديو من Facebook!**\n\n"
