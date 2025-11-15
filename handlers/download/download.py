@@ -775,16 +775,18 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     
     # إعدادات خاصة لـ TikTok - مُحسّنة للصور والفيديوهات
     elif is_tiktok:
+        logger.info("🎵 [TikTok] تكوين إعدادات TikTok...")
+
         # إضافة tiktok-impersonate-browser إلى compat_opts
         if 'compat_opts' in ydl_opts:
             ydl_opts['compat_opts'].append('tiktok-impersonate-browser')
         else:
             ydl_opts['compat_opts'] = ['tiktok-impersonate-browser']
 
+        logger.info(f"🎵 [TikTok] compat_opts: {ydl_opts.get('compat_opts')}")
+
         ydl_opts.update({
             'format': 'best',
-            # Browser impersonation - مهم جداً لـ TikTok
-            'impersonate': 'Chrome-131',  # محاكاة Chrome 131 على Android 14
             # إعدادات مهمة لتيك توك
             'writesubtitles': False,
             'writethumbnail': False,
@@ -802,6 +804,17 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 }
             }
         })
+
+        # Browser impersonation - اختياري (يعمل إذا كان curl-cffi متوفر)
+        # التحقق من توفر curl_cffi قبل إضافة impersonate
+        try:
+            import curl_cffi
+            logger.info("🎵 [TikTok] curl_cffi متوفر - إضافة browser impersonation...")
+            ydl_opts['impersonate'] = 'Chrome-131'
+            logger.info("✅ [TikTok] تم إضافة impersonate: Chrome-131")
+        except ImportError:
+            logger.warning("⚠️ [TikTok] curl_cffi غير متوفر - browser impersonation معطل")
+            logger.info("🎵 [TikTok] سيتم استخدام compat_opts فقط")
     
     # إعدادات الصوت - محسّنة للسرعة 10x ⚡
     if quality == 'audio':
