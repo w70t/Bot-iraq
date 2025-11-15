@@ -785,38 +785,47 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
         logger.info(f"🎵 [TikTok] compat_opts: {ydl_opts.get('compat_opts')}")
 
-        ydl_opts.update({
+        # إعدادات أساسية لـ TikTok
+        tiktok_opts = {
             'format': 'best',
-            # إعدادات مهمة لتيك توك
             'writesubtitles': False,
             'writethumbnail': False,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
-                'Referer': 'https://www.tiktok.com/',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
             'extractor_args': {
                 'tiktok': {
                     'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
-                    'player_client': ['android'],  # استخدام Android client
+                    'player_client': ['android'],
                     'timeout': 60
                 }
             }
-        })
+        }
 
         # Browser impersonation - اختياري (يعمل إذا كان curl-cffi متوفر)
-        # التحقق من توفر curl_cffi قبل إضافة impersonate
+        impersonate_added = False
         try:
             import curl_cffi
             from yt_dlp.networking.impersonate import ImpersonateTarget
             logger.info("🎵 [TikTok] curl_cffi متوفر - إضافة browser impersonation...")
             # استخدام Android Chrome لأنه يعمل بشكل أفضل مع TikTok
-            ydl_opts['impersonate'] = ImpersonateTarget('chrome', '99', 'android', None)
+            tiktok_opts['impersonate'] = ImpersonateTarget('chrome', '99', 'android', None)
             logger.info("✅ [TikTok] تم إضافة impersonate: chrome-99-android")
+            # لا نضيف http_headers يدوياً عند استخدام impersonate
+            # لأن impersonate يوفر headers تلقائياً
+            impersonate_added = True
         except (ImportError, Exception) as e:
             logger.warning(f"⚠️ [TikTok] browser impersonation معطل: {str(e)}")
-            logger.info("🎵 [TikTok] سيتم استخدام compat_opts فقط")
+            logger.info("🎵 [TikTok] سيتم استخدام http_headers يدوياً")
+
+        # إضافة http_headers فقط إذا لم يتم تفعيل impersonate
+        if not impersonate_added:
+            tiktok_opts['http_headers'] = {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+                'Referer': 'https://www.tiktok.com/',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+            logger.info("🎵 [TikTok] تم إضافة http_headers يدوياً")
+
+        ydl_opts.update(tiktok_opts)
     
     # إعدادات الصوت - محسّنة للسرعة 10x ⚡
     if quality == 'audio':
