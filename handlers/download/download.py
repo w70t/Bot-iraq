@@ -57,7 +57,8 @@ from utils import (
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")
+LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")  # للفشل والأخطاء
+LOG_CHANNEL_ID_VIDEOS = os.getenv("LOG_CHANNEL_ID_VIDEOS")  # للنجاح والفيديوهات
 VIDEO_PATH = 'videos'
 
 if not os.path.exists(VIDEO_PATH):
@@ -287,14 +288,15 @@ def safe_filename(title: str, max_length: int = 60) -> str:
     return safe_name.strip()
 
 async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message, is_audio: bool = False):
-    """إرسال سجل التحميل إلى قناة اللوج مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
-    if not LOG_CHANNEL_ID:
+    """إرسال سجل التحميل الناجح إلى قناة الفيديوهات مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
+    if not LOG_CHANNEL_ID_VIDEOS:
+        logger.warning("⚠️ LOG_CHANNEL_ID_VIDEOS غير محدد، لن يتم إرسال سجلات النجاح")
         return
 
     try:
-        log_channel_id = int(LOG_CHANNEL_ID)
+        log_channel_id = int(LOG_CHANNEL_ID_VIDEOS)
     except (ValueError, TypeError):
-        logger.error(f"❌ LOG_CHANNEL_ID غير صحيح: {LOG_CHANNEL_ID}")
+        logger.error(f"❌ LOG_CHANNEL_ID_VIDEOS غير صحيح: {LOG_CHANNEL_ID_VIDEOS}")
         return
 
     user_id = user.id
@@ -396,10 +398,10 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
             disable_web_page_preview=True
         )
 
-        logger.info(f"✅ تم إرسال {media_text} ورسالة نصية قابلة للنسخ إلى قناة السجلات")
+        logger.info(f"✅ تم إرسال {media_text} ورسالة نصية قابلة للنسخ إلى قناة الفيديوهات (LOG_CHANNEL_ID_VIDEOS)")
 
     except Exception as e:
-        log_warning(f"❌ فشل إرسال {media_text} إلى قناة السجل: {e}", module="handlers/download.py")
+        log_warning(f"❌ فشل إرسال {media_text} إلى قناة الفيديوهات: {e}", module="handlers/download.py")
 
 async def show_quality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str, info_dict: dict):
     """عرض قائمة اختيار الجودة - مبسطة"""
