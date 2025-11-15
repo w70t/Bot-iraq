@@ -2289,33 +2289,99 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 'facebook' in error_msg.lower() or 'facebook.com' in url.lower() or 'fb.watch' in url.lower() or 'fb.com' in url.lower():
             logger.error(f"❌ [Facebook] خطأ في التحميل: {error_msg[:200]}")
 
-            # معالجة خاصة لـ Facebook Stories
+            # معالجة خاصة لـ Facebook Stories - مع Fallback
             if '/stories/' in url.lower() and ('unsupported url' in error_msg.lower() or 'unsupported' in error_msg.lower()):
                 # 📝 تفاصيل تقنية للسجلات
-                logger.error(f"🔴 [Facebook Story] Failed - Details:")
+                logger.error(f"🔴 [Facebook Story] yt-dlp failed - trying fallback methods...")
                 logger.error(f"   URL: {url}")
                 logger.error(f"   Error: {error_msg}")
-                logger.error(f"   Cookies: {'Loaded' if 'platform_cookies' in locals() else 'Not loaded'}")
 
+                # 🌐 المحاولة 2: استخدام FB Story Downloader (Fallback)
+                try:
+                    from core.utils.fb_story_downloader import download_facebook_story
+                    import os
+                    from datetime import datetime
+
+                    await processing_message.edit_text(
+                        "⚠️ **yt-dlp فشل - جاري المحاولة عبر طريقة بديلة...**\n\n"
+                        "🌐 استخدام FBDownloader API...",
+                        parse_mode='Markdown'
+                    )
+
+                    logger.info("🌐 [FB_STORY_FALLBACK] Attempting external downloader...")
+
+                    # محاولة التحميل عبر الموقع الخارجي
+                    result = download_facebook_story(url)
+
+                    if result and result.get('video_url'):
+                        logger.info(f"✅ [FB_STORY_FALLBACK] Got video URL from {result.get('source')}")
+
+                        await processing_message.edit_text(
+                            f"✅ **تم العثور على الفيديو!**\n\n"
+                            f"📥 جاري التحميل من {result.get('source')}...",
+                            parse_mode='Markdown'
+                        )
+
+                        # تحميل الفيديو
+                        video_url = result['video_url']
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        output_file = f"downloads/fb_story_{timestamp}.mp4"
+
+                        # إنشاء مجلد downloads إذا لم يكن موجوداً
+                        os.makedirs("downloads", exist_ok=True)
+
+                        # تحميل الملف
+                        from core.utils.fb_story_downloader import FBStoryDownloader
+                        if FBStoryDownloader.download_file(video_url, output_file):
+                            logger.info(f"✅ [FB_STORY_FALLBACK] Downloaded successfully: {output_file}")
+
+                            # إرسال الفيديو
+                            await processing_message.edit_text(
+                                "📤 **جاري الرفع...**",
+                                parse_mode='Markdown'
+                            )
+
+                            with open(output_file, 'rb') as video:
+                                await context.bot.send_video(
+                                    chat_id=update.effective_chat.id,
+                                    video=video,
+                                    caption=f"📸 Facebook Story\n\n"
+                                            f"✅ تم التحميل عبر: {result.get('source')}\n"
+                                            f"🌐 طريقة بديلة (Fallback)",
+                                    supports_streaming=True
+                                )
+
+                            # حذف الملف المؤقت
+                            os.remove(output_file)
+
+                            await processing_message.delete()
+
+                            logger.info("✅ [FB_STORY_FALLBACK] Success!")
+                            return
+
+                        else:
+                            logger.error("❌ [FB_STORY_FALLBACK] File download failed")
+
+                    else:
+                        logger.error("❌ [FB_STORY_FALLBACK] No video URL found")
+
+                except Exception as fallback_error:
+                    logger.error(f"❌ [FB_STORY_FALLBACK] Error: {fallback_error}")
+
+                # إذا فشل الـ Fallback أيضاً
                 await processing_message.edit_text(
-                    "❌ **Facebook Stories غير مدعومة حالياً!**\n\n"
-                    "😔 **للأسف:** تحميل Facebook Stories لا يعمل بشكل جيد في الوقت الحالي بسبب قيود Facebook.\n\n"
-                    "🔍 **التفاصيل التقنية:**\n"
-                    "• yt-dlp يستخدم 'generic' extractor\n"
-                    "• Facebook حماية Stories بطريقة مختلفة عن Posts\n"
-                    "• الكوكيز وحدها غير كافية حالياً\n\n"
+                    "❌ **فشل تحميل Facebook Story!**\n\n"
+                    "😔 **حاولنا:**\n"
+                    "• yt-dlp ❌\n"
+                    "• FBDownloader API ❌\n"
+                    "• SaveFrom ❌\n\n"
                     "💡 **حلول بديلة:**\n\n"
                     "1️⃣ **تسجيل الشاشة:**\n"
-                    "   • استخدم تطبيق تسجيل شاشة على الهاتف\n"
-                    "   • شاهد الستوري وسجله\n\n"
-                    "2️⃣ **طرق أخرى:**\n"
-                    "   • جرب مواقع تحميل Stories خارجية\n"
-                    "   • استخدم extensions في المتصفح\n\n"
+                    "   • استخدم تطبيق Screen Recorder\n\n"
+                    "2️⃣ **جرب لاحقاً:**\n"
+                    "   • Story قد تكون منتهية أو خاصة\n\n"
                     "3️⃣ **فيديوهات Facebook العادية:**\n"
-                    "   • البوت يدعم الفيديوهات العادية ✅\n"
-                    "   • جرب رابط منشور عادي بدلاً من Story\n\n"
-                    "📊 **تم تسجيل الخطأ في السجلات للتحليل**\n"
-                    "📢 **ملاحظة:** نعمل على تحسين دعم Facebook Stories قريباً!",
+                    "   • البوت يدعم Posts/Videos بشكل ممتاز ✅",
                     parse_mode='Markdown'
                 )
                 return
