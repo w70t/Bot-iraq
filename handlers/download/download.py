@@ -360,21 +360,13 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
 
     try:
-        # 1) Forward الوسائط (فيديو أو صوت) إلى قناة السجلات
-        forwarded = await context.bot.forward_message(
-            chat_id=log_channel_id,
-            from_chat_id=update.effective_chat.id,
-            message_id=sent_message.message_id
-        )
-
-        # 2) إرسال رسالة نصية منسقة قابلة للنسخ بالكامل
-        # استخدام HTML بدلاً من Markdown لتجنب مشاكل parsing مع الرموز الخاصة
         # Escape HTML special characters في العنوان
         import html
         safe_title = html.escape(media_title)
         safe_username = html.escape(username)
 
-        info_text = (
+        # بناء التعليق للفيديو/الصوت
+        caption = (
             f"{media_emoji} <b>{media_text} جديد تم معالجته</b>\n\n"
             f"👤 <b>المستخدم:</b> {safe_username} (ID: <code>{user_id}</code>)\n"
             f"🔗 <b>الرابط:</b> {media_url}\n"
@@ -384,21 +376,38 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
             f"⏱️ <b>المدة:</b> {duration_text}\n"
             f"📦 <b>الحجم:</b> {size_text}\n"
             f"🎭 <b>النوع:</b> {media_type}\n"
-            f"📅 <b>الوقت:</b> {timestamp}\n\n"
-            f"✨ <b>الوسائط مرفقة أعلاه مباشرة.</b>"
+            f"📅 <b>الوقت:</b> {timestamp}"
         )
 
-        # الانتظار ثانية واحدة قبل إرسال النص لضمان ترتيب الرسائل
-        await asyncio.sleep(1)
+        # 1) إرسال الوسائط (فيديو أو صوت) مباشرة إلى قناة السجلات باستخدام file_id
+        if is_audio:
+            # استخراج file_id من رسالة الصوت
+            file_id = sent_message.audio.file_id if sent_message.audio else None
+            if file_id:
+                await context.bot.send_audio(
+                    chat_id=log_channel_id,
+                    audio=file_id,
+                    caption=caption,
+                    parse_mode="HTML",
+                    duration=duration if duration else None
+                )
+            else:
+                logger.warning(f"⚠️ لم يتم العثور على file_id للصوت")
+        else:
+            # استخراج file_id من رسالة الفيديو
+            file_id = sent_message.video.file_id if sent_message.video else None
+            if file_id:
+                await context.bot.send_video(
+                    chat_id=log_channel_id,
+                    video=file_id,
+                    caption=caption,
+                    parse_mode="HTML",
+                    duration=duration if duration else None
+                )
+            else:
+                logger.warning(f"⚠️ لم يتم العثور على file_id للفيديو")
 
-        await context.bot.send_message(
-            chat_id=log_channel_id,
-            text=info_text,
-            parse_mode="HTML",
-            disable_web_page_preview=True
-        )
-
-        logger.info(f"✅ تم إرسال {media_text} ورسالة نصية قابلة للنسخ إلى قناة الفيديوهات (LOG_CHANNEL_ID_VIDEOS)")
+        logger.info(f"✅ تم إرسال {media_text} مع التفاصيل إلى قناة الفيديوهات (LOG_CHANNEL_ID_VIDEOS)")
 
     except Exception as e:
         log_warning(f"❌ فشل إرسال {media_text} إلى قناة الفيديوهات: {e}", module="handlers/download.py")
