@@ -811,9 +811,9 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             import curl_cffi
             from yt_dlp.networking.impersonate import ImpersonateTarget
             logger.info("🎵 [TikTok] curl_cffi متوفر - إضافة browser impersonation...")
-            # استخدام ImpersonateTarget بالصيغة الصحيحة
-            ydl_opts['impersonate'] = ImpersonateTarget('chrome', '131', None, None)
-            logger.info("✅ [TikTok] تم إضافة impersonate: chrome-131")
+            # استخدام Android Chrome لأنه يعمل بشكل أفضل مع TikTok
+            ydl_opts['impersonate'] = ImpersonateTarget('chrome', '99', 'android', None)
+            logger.info("✅ [TikTok] تم إضافة impersonate: chrome-99-android")
         except (ImportError, Exception) as e:
             logger.warning(f"⚠️ [TikTok] browser impersonation معطل: {str(e)}")
             logger.info("🎵 [TikTok] سيتم استخدام compat_opts فقط")
