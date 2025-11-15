@@ -572,12 +572,13 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # معظم المنصات تحتاج format selector مرن جداً لتجنب أخطاء "format not available"
-    flexible_platforms = is_facebook or is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter
-    if flexible_platforms and quality != 'audio':
+    # Pinterest يحتاج format بسيط جداً - فقط 'best' بدون selectors معقدة
+    if is_pinterest and quality != 'audio':
+        format_choice = 'best'
+    # باقي المنصات المرنة (Facebook, Reddit, Twitter, Vimeo, Dailymotion, Twitch)
+    elif (is_facebook or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter) and quality != 'audio':
         # محاولة عدة خيارات بالترتيب - مرن للغاية
-        # Pinterest وبعض المنصات تحتاج format مرن جداً
-        format_choice = 'best/bestvideo+bestaudio/bestvideo/b/bv*+ba/bv*/w'  # أكثر مرونة
+        format_choice = 'best/bestvideo+bestaudio/bestvideo/b/bv*+ba/bv*/w'
 
     # إعدادات أساسية
     ydl_opts = {
