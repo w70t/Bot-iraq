@@ -572,11 +572,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # Pinterest - نترك الاختيار التلقائي (لا نحدد format)
+    # Pinterest - لا نحدد format هنا، سيتم تحديده في الإعدادات الخاصة
     if is_pinterest and quality != 'audio':
-        # ترك yt-dlp يختار تلقائياً - أكثر مرونة
+        # سيتم تحديد format في الإعدادات الخاصة أدناه
         format_choice = None
-        logger.info("🎨 Pinterest: استخدام الاختيار التلقائي للصيغة")
+        logger.info("🎨 Pinterest: استخدام الإعدادات الخاصة")
     # باقي المنصات المرنة (Facebook, Reddit, Twitter, Vimeo, Dailymotion, Twitch)
     elif (is_facebook or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter) and quality != 'audio':
         # محاولة عدة خيارات بالترتيب - مرن للغاية
@@ -706,12 +706,21 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     # ⭐ إعدادات خاصة لـ Pinterest - حل مشاكل التحميل
     if is_pinterest:
         ydl_opts.update({
-            'format': 'best',  # Pinterest يحتاج 'best' فقط
+            # استخدام format بسيط - worst أولاً لتجنب مشاكل HLS
+            'format': 'worst/b/best',
+            # استخدام ffmpeg لتحميل HLS بدلاً من native downloader
+            'external_downloader': 'ffmpeg',
+            'external_downloader_args': {
+                'ffmpeg_i': [
+                    '-hide_banner',
+                    '-loglevel', 'error'
+                ]
+            },
             # تقليل concurrent downloads لتجنب مشاكل fragments
             'concurrent_fragment_downloads': 1,
             # زيادة المحاولات
-            'retries': 20,
-            'fragment_retries': 20,
+            'retries': 30,
+            'fragment_retries': 30,
             # تقليل حجم buffer
             'http_chunk_size': 1048576,  # 1MB بدلاً من 10MB
             'buffersize': 1024 * 128,  # 128KB بدلاً من 512KB
@@ -735,6 +744,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 }
             }
         })
+        logger.info("🎬 Pinterest: استخدام ffmpeg لتحميل HLS")
     
     # إعدادات خاصة لـ Facebook
     elif is_facebook:
