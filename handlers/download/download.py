@@ -784,12 +784,12 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         ydl_opts.update({
             'format': 'best',
             # Browser impersonation - مهم جداً لـ TikTok
-            'impersonate': 'chrome120',  # محاكاة Chrome 120
+            'impersonate': 'Chrome-131:Android-14',  # محاكاة Chrome 131 على Android 14
             # إعدادات مهمة لتيك توك
             'writesubtitles': False,
             'writethumbnail': False,
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
                 'Referer': 'https://www.tiktok.com/',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.9',
