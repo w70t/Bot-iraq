@@ -366,18 +366,24 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
         )
 
         # 2) إرسال رسالة نصية منسقة قابلة للنسخ بالكامل
+        # استخدام HTML بدلاً من Markdown لتجنب مشاكل parsing مع الرموز الخاصة
+        # Escape HTML special characters في العنوان
+        import html
+        safe_title = html.escape(media_title)
+        safe_username = html.escape(username)
+
         info_text = (
-            f"{media_emoji} **{media_text} جديد تم معالجته**\n\n"
-            f"👤 **المستخدم:** {username} (ID: `{user_id}`)\n"
-            f"🔗 **الرابط:** {media_url}\n"
-            f"🎞️ **العنوان:** {media_title}\n"
-            f"📊 **المشاهدات:** {views_text}\n"
-            f"💬 **التفاعلات:** {likes_text}\n"
-            f"⏱️ **المدة:** {duration_text}\n"
-            f"📦 **الحجم:** {size_text}\n"
-            f"🎭 **النوع:** {media_type}\n"
-            f"📅 **الوقت:** {timestamp}\n\n"
-            f"✨ **الوسائط مرفقة أعلاه مباشرة.**"
+            f"{media_emoji} <b>{media_text} جديد تم معالجته</b>\n\n"
+            f"👤 <b>المستخدم:</b> {safe_username} (ID: <code>{user_id}</code>)\n"
+            f"🔗 <b>الرابط:</b> {media_url}\n"
+            f"🎞️ <b>العنوان:</b> {safe_title}\n"
+            f"📊 <b>المشاهدات:</b> {views_text}\n"
+            f"💬 <b>التفاعلات:</b> {likes_text}\n"
+            f"⏱️ <b>المدة:</b> {duration_text}\n"
+            f"📦 <b>الحجم:</b> {size_text}\n"
+            f"🎭 <b>النوع:</b> {media_type}\n"
+            f"📅 <b>الوقت:</b> {timestamp}\n\n"
+            f"✨ <b>الوسائط مرفقة أعلاه مباشرة.</b>"
         )
 
         # الانتظار ثانية واحدة قبل إرسال النص لضمان ترتيب الرسائل
@@ -386,7 +392,7 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
         await context.bot.send_message(
             chat_id=log_channel_id,
             text=info_text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             disable_web_page_preview=True
         )
 
