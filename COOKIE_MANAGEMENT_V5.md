@@ -48,7 +48,8 @@ A fully automated, encrypted cookie management system for handling Facebook, Ins
 
 ### 7️⃣ **Story Support**
 - ✅ Instagram Stories, Reels, Highlights, Posts
-- ✅ Facebook Stories, Videos, Posts, Groups
+- ⚠️ Facebook Stories (limited support - working on improvements)
+- ✅ Facebook Videos, Posts, Groups
 - ✅ TikTok Private/Following-only videos
 
 ### 8️⃣ **Security Design**

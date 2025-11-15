@@ -42,7 +42,7 @@ TELEGRAM_MAX_SIZE = 50 * 1024 * 1024
 def extract_urls(text: str) -> List[str]:
     """استخراج جميع الروابط من النص"""
     # بحث عن روابط YouTube, Instagram, Facebook, etc.
-    url_pattern = r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|instagram\.com/(?:p|reel|stories)/|fb\.watch/|facebook\.com/)[^\s]+'
+    url_pattern = r'https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/|instagram\.com/(?:p|reel|stories)/|fb\.watch/|facebook\.com/(?:stories/|watch/)?)[^\s]+'
     urls = re.findall(url_pattern, text)
     return urls[:MAX_LINKS]  # حد أقصى 6 روابط
 
@@ -55,6 +55,8 @@ def detect_platform(url: str) -> str:
         return 'instagram_post'
     elif 'instagram.com/stories' in url:
         return 'instagram_story'
+    elif 'facebook.com/stories' in url:
+        return 'facebook_story'
     elif 'facebook.com' in url or 'fb.watch' in url:
         return 'facebook'
     else:
@@ -723,10 +725,16 @@ async def handle_multi_download(update: Update, context: ContextTypes.DEFAULT_TY
 
     # التحقق من القصص
     first_url_platform = detect_platform(urls[0])
-    if 'story' in first_url_platform or 'facebook' in first_url_platform:
-        # تحميل قصة واحدة
-        await download_story(update, context, urls[0])
-        return
+    if 'story' in first_url_platform:
+        # Instagram Stories تعمل، Facebook Stories تحتاج للمعالج الرئيسي
+        if first_url_platform == 'instagram_story':
+            await download_story(update, context, urls[0])
+            return
+        elif first_url_platform == 'facebook_story':
+            # Facebook Stories تُرسل للمعالج الرئيسي (سيعطي رسالة واضحة)
+            from handlers.download.download import handle_download
+            await handle_download(update, context)
+            return
 
     # عرض اختيار الوضع للفيديوهات/صوتيات المتعددة
     await show_mode_selection(update, context, urls)
