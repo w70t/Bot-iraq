@@ -1,10 +1,11 @@
 python-telegram-bot[webhooks,job-queue]>=21.0.1
 requests>=2.31.0
 beautifulsoup4>=4.12.0
-yt-dlp>=2024.3.10
+yt-dlp>=2024.11.4
 ffmpeg-python>=0.2.0
 pymongo[srv]>=4.6.0
 uvicorn>=0.27.0
 pillow>=10.2.0
 python-dotenv>=1.0.0
 cryptography>=42.0.0
+curl-cffi>=0.5.10
