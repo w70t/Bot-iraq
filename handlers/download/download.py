@@ -1851,6 +1851,30 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"❌ خطأ في التحليل: {e}", exc_info=True)
         error_msg = str(e)
 
+        # ⭐ معالج خاص لأخطاء TikTok
+        if 'tiktok' in error_msg.lower() or 'tiktok' in url.lower():
+            if 'video not available' in error_msg.lower() or 'status code 0' in error_msg.lower():
+                await processing_message.edit_text(
+                    "❌ **فشل تحميل الفيديو من TikTok!**\n\n"
+                    "🎵 **الأسباب المحتملة:**\n\n"
+                    "1️⃣ **الفيديو محذوف أو خاص**\n"
+                    "   • تأكد أن الفيديو لا يزال موجوداً\n"
+                    "   • تحقق أن الحساب ليس خاصاً\n\n"
+                    "2️⃣ **الفيديو محظور جغرافياً**\n"
+                    "   • قد يكون غير متاح في منطقتك\n\n"
+                    "3️⃣ **مشكلة في الكوكيز**\n"
+                    "   • الكوكيز قد تحتاج إلى تحديث\n\n"
+                    "💡 **الحلول:**\n\n"
+                    "• افتح الرابط في TikTok وتأكد أنه يعمل\n"
+                    "• جرب فيديو آخر من TikTok\n"
+                    "• إذا استمرت المشكلة، جدّد الكوكيز:\n"
+                    "  /admin → إدارة الكوكيز → TikTok\n\n"
+                    "⚠️ **ملاحظة:** TikTok يصعّب التحميل بشكل مستمر\n"
+                    "بعض الفيديوهات قد لا تكون قابلة للتحميل حالياً",
+                    parse_mode='Markdown'
+                )
+                return
+
         # ⭐ معالج خاص لأخطاء Instagram Stories
         if 'instagram:story' in error_msg.lower() or ('instagram' in url.lower() and 'stories' in url.lower()):
             if 'unreachable' in error_msg.lower() or 'login' in error_msg.lower() or 'cookies' in error_msg.lower():
