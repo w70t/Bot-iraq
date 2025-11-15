@@ -43,7 +43,13 @@ try:
     if not MONGODB_URI:
         raise ValueError("متغير البيئة MONGODB_URI غير موجود.")
 
-    client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+    # Performance optimization: added maxPoolSize for better concurrent operations
+    client = MongoClient(
+        MONGODB_URI,
+        serverSelectionTimeoutMS=5000,
+        maxPoolSize=100,  # Increased pool size for better performance
+        minPoolSize=10    # Minimum connections to maintain
+    )
     client.server_info()
 
     db = client.telegram_bot
@@ -85,7 +91,13 @@ def ensure_db_connection():
                 logger.error("❌ MONGODB_URI not configured")
                 return False
 
-            client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+            # Performance optimization: added maxPoolSize for better concurrent operations
+            client = MongoClient(
+                MONGODB_URI,
+                serverSelectionTimeoutMS=5000,
+                maxPoolSize=100,  # Increased pool size for better performance
+                minPoolSize=10    # Minimum connections to maintain
+            )
             client.server_info()  # Test connection
 
             db = client.telegram_bot
