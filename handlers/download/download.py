@@ -311,9 +311,9 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
 
     media_title = video_info.get('title', 'غير متوفر (No title)')
     media_url = video_info.get('webpage_url', 'N/A')
-    duration = video_info.get('duration', 0)
-    view_count = video_info.get('view_count', 0)
-    like_count = video_info.get('like_count', 0)
+    duration = video_info.get('duration') or 0
+    view_count = video_info.get('view_count') or 0
+    like_count = video_info.get('like_count') or 0
 
     # تحديد نوع الوسائط
     media_type = "🎧 صوت" if is_audio else "🎥 فيديو"
