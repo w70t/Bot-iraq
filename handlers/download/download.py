@@ -784,7 +784,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         ydl_opts.update({
             'format': 'best',
             # Browser impersonation - مهم جداً لـ TikTok
-            'impersonate': 'Chrome-131:Android-14',  # محاكاة Chrome 131 على Android 14
+            'impersonate': 'Chrome-131',  # محاكاة Chrome 131 على Android 14
             # إعدادات مهمة لتيك توك
             'writesubtitles': False,
             'writethumbnail': False,
