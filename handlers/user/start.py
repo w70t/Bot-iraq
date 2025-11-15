@@ -2,12 +2,57 @@ from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardB
 from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 import logging
+import os
+from datetime import datetime
 
 from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
 from utils import get_message
 
 # إعداد logger
 logger = logging.getLogger(__name__)
+
+async def send_new_user_notification(context: ContextTypes.DEFAULT_TYPE, user):
+    """
+    إرسال إشعار لقناة السجلات عند اشتراك عضو جديد
+    """
+    log_channel_id = os.getenv("LOG_CHANNEL_ID")
+    if not log_channel_id:
+        logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم إرسال إشعار العضو الجديد")
+        return
+
+    try:
+        log_channel_id = int(log_channel_id)
+    except (ValueError, TypeError):
+        logger.error(f"❌ LOG_CHANNEL_ID غير صحيح: {log_channel_id}")
+        return
+
+    user_id = user.id
+    user_name = user.full_name
+    username_display = f"@{user.username}" if user.username else "لا يوجد"
+    timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
+
+    # بناء رسالة الإشعار
+    notification_text = (
+        f"👋 <b>عضو جديد انضم للبوت!</b>\n"
+        f"{'━' * 30}\n\n"
+        f"👤 <b>معلومات العضو:</b>\n"
+        f"   • الاسم: {user_name}\n"
+        f"   • اليوزر: {username_display}\n"
+        f"   • ID: <code>{user_id}</code>\n\n"
+        f"📅 <b>تاريخ الانضمام:</b> {timestamp}\n"
+        f"{'━' * 30}\n"
+        f"✨ <b>مرحباً بك في عائلة البوت!</b>"
+    )
+
+    try:
+        await context.bot.send_message(
+            chat_id=log_channel_id,
+            text=notification_text,
+            parse_mode='HTML'
+        )
+        logger.info(f"✅ تم إرسال إشعار العضو الجديد: {user_id}")
+    except Exception as e:
+        logger.error(f"❌ فشل إرسال إشعار العضو الجديد: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -30,9 +75,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if potential_code.startswith('REF_'):
             referral_code = potential_code
     
-    # إضافة المستخدم إلى قاعدة البيانات
-    add_user(user_id, user.username, user.full_name)
-    
+    # إضافة المستخدم إلى قاعدة البيانات وتحديد إذا كان جديد
+    is_new_user = add_user(user_id, user.username, user.full_name)
+
+    # إرسال إشعار لقناة السجلات عند اشتراك عضو جديد
+    if is_new_user:
+        await send_new_user_notification(context, user)
+
     # معالجة الإحالة إذا كانت موجودة
     if referral_code:
         from telegram.ext import ContextTypes

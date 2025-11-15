@@ -12,7 +12,12 @@ def is_admin(user_id: int) -> bool:
 
 
 def add_user(user_id: int, username: str = None, full_name: str = None, language: str = 'ar'):
-    """إضافة مستخدم جديد"""
+    """
+    إضافة مستخدم جديد
+
+    Returns:
+        bool: True إذا كان مستخدم جديد، False إذا كان موجود مسبقاً
+    """
     try:
         user_data = {
             'user_id': user_id,
@@ -26,13 +31,21 @@ def add_user(user_id: int, username: str = None, full_name: str = None, language
             'subscription_end': None
         }
 
-        users_collection.update_one(
+        result = users_collection.update_one(
             {'user_id': user_id},
             {'$setOnInsert': user_data},
             upsert=True
         )
-        logger.info(f"✅ تم إضافة/تحديث المستخدم {user_id}")
-        return True
+
+        # إذا كان upserted_id موجود، يعني أنه تم إنشاء مستخدم جديد
+        is_new_user = result.upserted_id is not None
+
+        if is_new_user:
+            logger.info(f"✅ تم إضافة مستخدم جديد: {user_id}")
+        else:
+            logger.debug(f"📝 المستخدم {user_id} موجود مسبقاً")
+
+        return is_new_user
     except Exception as e:
         logger.error(f"❌ فشل إضافة المستخدم: {e}")
         return False
