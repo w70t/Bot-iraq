@@ -878,12 +878,12 @@ async def handle_cookie_upload(update: Update, context: ContextTypes.DEFAULT_TYP
         platform = 'facebook'
     elif 'instagram' in filename or 'ig' in filename:
         platform = 'instagram'
+    elif 'twitter' in filename or filename.startswith('x.'):
+        platform = 'twitter'
     elif 'tiktok' in filename or 'tt' in filename:
         platform = 'tiktok'
     elif 'pinterest' in filename:
         platform = 'pinterest'
-    elif 'twitter' in filename or filename.startswith('x.'):
-        platform = 'twitter'
     elif 'reddit' in filename:
         platform = 'reddit'
     elif 'vimeo' in filename:
