@@ -755,8 +755,8 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
         ydl_opts.update({
             'format': 'best',  # Facebook يحتاج 'best' فقط
-            # 🎯 محاولة إجبار Facebook extractor بدلاً من generic
-            'allowed_extractors': ['facebook', 'facebook:story'] if is_story else ['facebook'],
+            # 🎯 لا نقيد extractors - دع yt-dlp يجرب جميع الخيارات
+            # 'allowed_extractors' تسبب "No suitable extractor" لأن facebook extractor لا يدعم Stories
             'extractor_args': {
                 'facebook': {
                     'timeout': 90 if is_story else 60,  # timeout أطول للستوريات
@@ -779,8 +779,10 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
         # 📝 Logging للتأكد من الإعدادات
         if is_story:
-            logger.info(f"🔧 [Facebook Story] Configured with allowed_extractors: {ydl_opts.get('allowed_extractors')}")
+            allowed = ydl_opts.get('allowed_extractors', 'No restrictions (try all)')
+            logger.info(f"🔧 [Facebook Story] Extractors: {allowed}")
             logger.info(f"🔧 [Facebook Story] Cookies: {'✅ Loaded' if cookies_loaded else '❌ Not loaded'}")
+            logger.info(f"🔧 [Facebook Story] Strategy: Let yt-dlp try all available extractors")
 
         # للستوريات: يجب أن تكون الكوكيز موجودة
         if is_story and not cookies_loaded:
