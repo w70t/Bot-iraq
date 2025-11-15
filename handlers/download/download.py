@@ -360,54 +360,48 @@ async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update
     timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
 
     try:
-        # Escape HTML special characters في العنوان
+        # 1) تحويل الرسالة (forward) إلى قناة السجلات لتوفير bandwidth
+        forwarded = await context.bot.forward_message(
+            chat_id=log_channel_id,
+            from_chat_id=update.effective_chat.id,
+            message_id=sent_message.message_id
+        )
+
+        # 2) إرسال رسالة تفاصيل كاملة بعد الفيديو المحول
+        # Escape HTML special characters
         import html
         safe_title = html.escape(media_title)
         safe_username = html.escape(username)
+        safe_user_name = html.escape(user_name)
 
-        # بناء التعليق للفيديو/الصوت
-        caption = (
-            f"{media_emoji} <b>{media_text} جديد تم معالجته</b>\n\n"
-            f"👤 <b>المستخدم:</b> {safe_username} (ID: <code>{user_id}</code>)\n"
-            f"🔗 <b>الرابط:</b> {media_url}\n"
-            f"🎞️ <b>العنوان:</b> {safe_title}\n"
-            f"📊 <b>المشاهدات:</b> {views_text}\n"
-            f"💬 <b>التفاعلات:</b> {likes_text}\n"
-            f"⏱️ <b>المدة:</b> {duration_text}\n"
-            f"📦 <b>الحجم:</b> {size_text}\n"
+        info_text = (
+            f"{media_emoji} <b>سجل {media_text} جديد</b>\n"
+            f"{'━' * 30}\n\n"
+            f"👤 <b>المستخدم:</b>\n"
+            f"   • الاسم: {safe_user_name}\n"
+            f"   • اليوزر: {safe_username}\n"
+            f"   • ID: <code>{user_id}</code>\n\n"
+            f"🔗 <b>الرابط الأصلي:</b>\n{media_url}\n\n"
+            f"🎞️ <b>العنوان:</b>\n{safe_title}\n\n"
+            f"📊 <b>الإحصائيات:</b>\n"
+            f"   • المشاهدات: {views_text}\n"
+            f"   • التفاعلات: {likes_text}\n"
+            f"   • المدة: {duration_text}\n"
+            f"   • الحجم: {size_text}\n\n"
             f"🎭 <b>النوع:</b> {media_type}\n"
-            f"📅 <b>الوقت:</b> {timestamp}"
+            f"📅 <b>التاريخ:</b> {timestamp}\n"
+            f"{'━' * 30}\n"
+            f"✅ <b>تم المعالجة بنجاح</b>"
         )
 
-        # 1) إرسال الوسائط (فيديو أو صوت) مباشرة إلى قناة السجلات باستخدام file_id
-        if is_audio:
-            # استخراج file_id من رسالة الصوت
-            file_id = sent_message.audio.file_id if sent_message.audio else None
-            if file_id:
-                await context.bot.send_audio(
-                    chat_id=log_channel_id,
-                    audio=file_id,
-                    caption=caption,
-                    parse_mode="HTML",
-                    duration=duration if duration else None
-                )
-            else:
-                logger.warning(f"⚠️ لم يتم العثور على file_id للصوت")
-        else:
-            # استخراج file_id من رسالة الفيديو
-            file_id = sent_message.video.file_id if sent_message.video else None
-            if file_id:
-                await context.bot.send_video(
-                    chat_id=log_channel_id,
-                    video=file_id,
-                    caption=caption,
-                    parse_mode="HTML",
-                    duration=duration if duration else None
-                )
-            else:
-                logger.warning(f"⚠️ لم يتم العثور على file_id للفيديو")
+        await context.bot.send_message(
+            chat_id=log_channel_id,
+            text=info_text,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
 
-        logger.info(f"✅ تم إرسال {media_text} مع التفاصيل إلى قناة الفيديوهات (LOG_CHANNEL_ID_VIDEOS)")
+        logger.info(f"✅ تم تحويل {media_text} وإرسال التفاصيل الكاملة إلى قناة الفيديوهات (LOG_CHANNEL_ID_VIDEOS)")
 
     except Exception as e:
         log_warning(f"❌ فشل إرسال {media_text} إلى قناة الفيديوهات: {e}", module="handlers/download.py")
@@ -1539,26 +1533,37 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 parse_mode='Markdown'
             )
 
-            # إرسال تقرير فشل إلى قناة السجلات
+            # إرسال تقرير فشل إلى قناة السجلات مع معلومات كاملة
             if LOG_CHANNEL_ID:
                 try:
                     log_channel_id = int(LOG_CHANNEL_ID)
-                    # استخدام file_size_str المحسوب مسبقاً
+
+                    # تحضير معلومات العضو
+                    user_name = user.full_name
+                    username_display = f"@{user.username}" if user.username else "لا يوجد"
+
                     fail_report_text = (
-                        "🔴 **فشل رفع ملف كبير (TimedOut)**\n\n"
-                        f"👤 المستخدم: @{user.username if user.username else user.full_name} (ID: {user_id})\n"
-                        f"🔗 الرابط الأصلي: {url[:100]}\n"
-                        f"📦 الحجم: {file_size_str}\n"
-                        f"⏱️ المدة: {format_duration(duration)}\n"
-                        f"📝 العنوان: {title[:100]}\n"
-                        f"⚠️ الخطأ: {upload_error}\n"
-                        f"🔗 الرابط البديل: {alternative_url}\n"
-                        f"🕒 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        "🔴 <b>فشل رفع ملف كبير (TimedOut)</b>\n"
+                        f"{'━' * 30}\n\n"
+                        f"👤 <b>معلومات العضو:</b>\n"
+                        f"   • الاسم: {user_name}\n"
+                        f"   • اليوزر: {username_display}\n"
+                        f"   • ID: <code>{user_id}</code>\n\n"
+                        f"📝 <b>تفاصيل الملف:</b>\n"
+                        f"   • العنوان: {title[:100]}\n"
+                        f"   • الحجم: {file_size_str}\n"
+                        f"   • المدة: {format_duration(duration)}\n\n"
+                        f"🔗 <b>الرابط الأصلي:</b>\n{url[:150]}\n\n"
+                        f"⚠️ <b>سبب الفشل:</b> {upload_error}\n\n"
+                        f"🔗 <b>الرابط البديل:</b>\n{alternative_url}\n\n"
+                        f"📅 <b>الوقت:</b> {datetime.now().strftime('%d-%m-%Y — %H:%M UTC')}\n"
+                        f"{'━' * 30}"
                     )
                     await context.bot.send_message(
                         chat_id=log_channel_id,
                         text=fail_report_text,
-                        parse_mode='Markdown'
+                        parse_mode='HTML',
+                        disable_web_page_preview=True
                     )
                     logger.info("✅ تم إرسال تقرير الفشل إلى قناة السجلات")
                 except Exception as e:
@@ -1637,20 +1642,31 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         if LOG_CHANNEL_ID:
             try:
                 log_channel_id = int(LOG_CHANNEL_ID)
+
+                # تحضير معلومات العضو الكاملة
+                user_name = user.full_name
+                username_display = f"@{user.username}" if user.username else "لا يوجد"
+
                 error_report_text = (
-                    f"⚠️ **فشل تحميل جديد من {platform_name}**\n\n"
-                    f"👤 المستخدم: @{username} (ID: {user_id})\n"
-                    f"🔗 الرابط: {url[:100]}\n"
-                    f"📱 المنصة: `{platform_name}`\n"
-                    f"⚠️ نوع الخطأ: `{error_type}`\n"
-                    f"💬 الرسالة: `{error_message[:200]}`\n"
-                    f"🕒 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    f"⚠️ <b>فشل تحميل من {platform_name}</b>\n"
+                    f"{'━' * 30}\n\n"
+                    f"👤 <b>معلومات العضو:</b>\n"
+                    f"   • الاسم: {user_name}\n"
+                    f"   • اليوزر: {username_display}\n"
+                    f"   • ID: <code>{user_id}</code>\n\n"
+                    f"📱 <b>المنصة:</b> {platform_name}\n\n"
+                    f"🔗 <b>الرابط:</b>\n{url[:150]}\n\n"
+                    f"⚠️ <b>نوع الخطأ:</b> <code>{error_type}</code>\n\n"
+                    f"💬 <b>تفاصيل الخطأ:</b>\n<code>{error_message[:300]}</code>\n\n"
+                    f"📅 <b>الوقت:</b> {datetime.now().strftime('%d-%m-%Y — %H:%M UTC')}\n"
+                    f"{'━' * 30}"
                 )
 
                 await context.bot.send_message(
                     chat_id=log_channel_id,
                     text=error_report_text,
-                    parse_mode='Markdown'
+                    parse_mode='HTML',
+                    disable_web_page_preview=True
                 )
 
                 logger.info(f"✅ تم إرسال تقرير الخطأ لقناة السجلات")
