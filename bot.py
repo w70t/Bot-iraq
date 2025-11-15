@@ -486,6 +486,15 @@ def main() -> None:
     except Exception as e:
         logger.error(f"❌ فشل تسجيل معالجات الفحص الصحي: {e}")
 
+    # 3.4. Error Tracking System (للمدير)
+    try:
+        from handlers.admin.error_viewer import cmd_errors, handle_errors_callback
+        application.add_handler(CommandHandler("errors", cmd_errors))
+        application.add_handler(CallbackQueryHandler(handle_errors_callback, pattern='^errors_'))
+        logger.info("✅ تم تسجيل نظام تتبع الأخطاء")
+    except Exception as e:
+        logger.error(f"❌ فشل تسجيل نظام تتبع الأخطاء: {e}")
+
     # 3.5. Per-user cancel download + batch YouTube download
     application.add_handler(CommandHandler("cancel", cancel_download))
     application.add_handler(CommandHandler("batch", handle_batch_download))
