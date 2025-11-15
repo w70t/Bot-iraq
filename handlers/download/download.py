@@ -706,8 +706,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     # ⭐ إعدادات خاصة لـ Pinterest - حل مشاكل التحميل
     if is_pinterest:
         ydl_opts.update({
-            # استخدام format بسيط - worst أولاً لتجنب مشاكل HLS
-            'format': 'worst/b/best',
+            # لا نحدد format - نترك yt-dlp يختار تلقائياً (أفضل للتوافق)
             # استخدام ffmpeg لتحميل HLS بدلاً من native downloader
             'external_downloader': 'ffmpeg',
             'external_downloader_args': {
