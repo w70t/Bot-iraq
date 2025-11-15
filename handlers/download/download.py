@@ -572,9 +572,10 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # Pinterest يحتاج format بسيط جداً - فقط 'best' بدون selectors معقدة
+    # Pinterest يحتاج format مرن - يحاول عدة خيارات متاحة
     if is_pinterest and quality != 'audio':
-        format_choice = 'best'
+        # محاولة عدة صيغ بالترتيب حتى نجد واحدة متاحة
+        format_choice = 'best/bestvideo+bestaudio/bestvideo/b/bv*+ba/bv*/w'
     # باقي المنصات المرنة (Facebook, Reddit, Twitter, Vimeo, Dailymotion, Twitch)
     elif (is_facebook or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter) and quality != 'audio':
         # محاولة عدة خيارات بالترتيب - مرن للغاية
