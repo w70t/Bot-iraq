@@ -48,6 +48,9 @@ from database import (
     get_no_logo_credits,
     use_no_logo_credit
 )
+
+# نظام تتبع الأخطاء المتقدم
+from core.utils.error_tracker import ErrorTracker, track_download_error
 from utils import (
     get_message, clean_filename, get_config, format_file_size, format_duration,
     send_video_report, rate_limit, validate_url, log_warning,
@@ -752,6 +755,8 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
         ydl_opts.update({
             'format': 'best',  # Facebook يحتاج 'best' فقط
+            # 🎯 محاولة إجبار Facebook extractor بدلاً من generic
+            'allowed_extractors': ['facebook', 'facebook:story'] if is_story else ['facebook'],
             'extractor_args': {
                 'facebook': {
                     'timeout': 90 if is_story else 60,  # timeout أطول للستوريات
@@ -771,6 +776,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             'max_sleep_interval': 5 if is_story else 0,
             'skip_unavailable_fragments': True,
         })
+
+        # 📝 Logging للتأكد من الإعدادات
+        if is_story:
+            logger.info(f"🔧 [Facebook Story] Configured with allowed_extractors: {ydl_opts.get('allowed_extractors')}")
+            logger.info(f"🔧 [Facebook Story] Cookies: {'✅ Loaded' if cookies_loaded else '❌ Not loaded'}")
 
         # للستوريات: يجب أن تكون الكوكيز موجودة
         if is_story and not cookies_loaded:
@@ -1905,8 +1915,23 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         loop = asyncio.get_event_loop()
 
+        # 📊 Logging محسّن لتتبع الأخطاء
+        platform = get_platform_from_url(url)
+        is_story = '/stories/' in url.lower() or '/story/' in url.lower()
+
+        if is_story:
+            logger.info(f"🔍 [STORY_DEBUG] Platform: {platform}, URL: {url[:80]}...")
+            logger.info(f"🔍 [STORY_DEBUG] Cookies loaded: {ydl_opts.get('cookiefile') is not None}")
+            logger.info(f"🔍 [STORY_DEBUG] YDL opts keys: {list(ydl_opts.keys())}")
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            if is_story:
+                logger.info(f"🔍 [STORY_DEBUG] Attempting extract_info for {platform} story...")
+
             info_dict = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
+
+            if is_story:
+                logger.info(f"✅ [STORY_DEBUG] Successfully extracted! Extractor: {info_dict.get('extractor', 'unknown')}")
         
         title = info_dict.get('title', 'فيديو')
         duration = info_dict.get('duration', 0)
@@ -1955,6 +1980,17 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ خطأ في التحليل: {e}", exc_info=True)
         error_msg = str(e)
+
+        # 🔴 تتبع الخطأ بنظام متقدم
+        platform = get_platform_from_url(url)
+        ErrorTracker.track_download_error(
+            platform=platform,
+            url=url,
+            error_message=error_msg,
+            user_id=user_id,
+            cookies_used=platform_cookies is not None if 'platform_cookies' in locals() else False,
+            extractor_used="unknown"
+        )
 
         # ⭐ معالج خاص لأخطاء TikTok
         if 'tiktok' in error_msg.lower() or 'tiktok' in url.lower():
@@ -2253,9 +2289,19 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # معالجة خاصة لـ Facebook Stories
             if '/stories/' in url.lower() and ('unsupported url' in error_msg.lower() or 'unsupported' in error_msg.lower()):
+                # 📝 تفاصيل تقنية للسجلات
+                logger.error(f"🔴 [Facebook Story] Failed - Details:")
+                logger.error(f"   URL: {url}")
+                logger.error(f"   Error: {error_msg}")
+                logger.error(f"   Cookies: {'Loaded' if 'platform_cookies' in locals() else 'Not loaded'}")
+
                 await processing_message.edit_text(
                     "❌ **Facebook Stories غير مدعومة حالياً!**\n\n"
                     "😔 **للأسف:** تحميل Facebook Stories لا يعمل بشكل جيد في الوقت الحالي بسبب قيود Facebook.\n\n"
+                    "🔍 **التفاصيل التقنية:**\n"
+                    "• yt-dlp يستخدم 'generic' extractor\n"
+                    "• Facebook حماية Stories بطريقة مختلفة عن Posts\n"
+                    "• الكوكيز وحدها غير كافية حالياً\n\n"
                     "💡 **حلول بديلة:**\n\n"
                     "1️⃣ **تسجيل الشاشة:**\n"
                     "   • استخدم تطبيق تسجيل شاشة على الهاتف\n"
@@ -2266,6 +2312,7 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "3️⃣ **فيديوهات Facebook العادية:**\n"
                     "   • البوت يدعم الفيديوهات العادية ✅\n"
                     "   • جرب رابط منشور عادي بدلاً من Story\n\n"
+                    "📊 **تم تسجيل الخطأ في السجلات للتحليل**\n"
                     "📢 **ملاحظة:** نعمل على تحسين دعم Facebook Stories قريباً!",
                     parse_mode='Markdown'
                 )
