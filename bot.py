@@ -1,5 +1,8 @@
 import os
+import sys
+import fcntl
 import logging
+import atexit
 
 # ⭐ إضافة هذا السطر لتحميل متغيرات .env
 from dotenv import load_dotenv
@@ -59,6 +62,60 @@ from handlers.notifications import (
 )
 from utils import get_message, escape_markdown, get_config, load_config, setup_bot_menu
 from database import init_db, update_user_interaction
+
+# ===== آلية القفل لمنع تشغيل نسخ متعددة =====
+class BotLock:
+    """
+    آلية قفل لمنع تشغيل نسخ متعددة من البوت في نفس الوقت.
+
+    استخدام fcntl على Linux لإنشاء قفل حصري على ملف.
+    عند محاولة تشغيل نسخة ثانية، سيفشل الحصول على القفل وسيتوقف البوت.
+    """
+    def __init__(self, lockfile_path: str = ".bot.lock"):
+        self.lockfile_path = lockfile_path
+        self.lockfile = None
+
+    def acquire(self) -> bool:
+        """
+        محاولة الحصول على القفل.
+        Returns: True إذا نجح، False إذا فشل (نسخة أخرى تعمل)
+        """
+        try:
+            # فتح/إنشاء ملف القفل
+            self.lockfile = open(self.lockfile_path, 'w')
+
+            # محاولة الحصول على قفل حصري (غير محظور)
+            fcntl.flock(self.lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            # كتابة PID للعملية الحالية
+            self.lockfile.write(str(os.getpid()))
+            self.lockfile.flush()
+
+            # تسجيل دالة للتنظيف عند الخروج
+            atexit.register(self.release)
+
+            return True
+
+        except IOError:
+            # القفل محجوز بالفعل - نسخة أخرى تعمل
+            return False
+        except Exception as e:
+            logging.error(f"❌ خطأ في آلية القفل: {e}")
+            return False
+
+    def release(self):
+        """تحرير القفل وحذف ملف القفل"""
+        try:
+            if self.lockfile:
+                fcntl.flock(self.lockfile.fileno(), fcntl.LOCK_UN)
+                self.lockfile.close()
+
+            # حذف ملف القفل
+            if os.path.exists(self.lockfile_path):
+                os.remove(self.lockfile_path)
+
+        except Exception as e:
+            logging.error(f"⚠️ خطأ في تحرير القفل: {e}")
 
 # معالجات الأزرار التفاعلية
 async def handle_vip_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -362,7 +419,21 @@ async def post_init(application: Application):
 
 def main() -> None:
     """تشغيل البوت الرئيسي"""
+    # ===== التحقق من عدم وجود نسخة أخرى من البوت =====
+    bot_lock = BotLock()
+    if not bot_lock.acquire():
+        logger.error("=" * 50)
+        logger.error("❌ فشل تشغيل البوت!")
+        logger.error("⚠️ هناك نسخة أخرى من البوت تعمل بالفعل")
+        logger.error("💡 الحل:")
+        logger.error("   1. أوقف النسخة الأخرى من البوت")
+        logger.error("   2. أو استخدم: ps aux | grep bot.py")
+        logger.error("   3. ثم: kill -9 <PID>")
+        logger.error("=" * 50)
+        sys.exit(1)
+
     logger.info("=" * 50)
+    logger.info("🔒 تم الحصول على القفل بنجاح - لا توجد نسخ أخرى")
     logger.info("🤖 بدء تشغيل البوت...")
     logger.info("=" * 50)
 
@@ -690,6 +761,53 @@ def main() -> None:
     
     logger.info("✅ تم تسجيل جميع المعالجات بنجاح.")
     logger.info("=" * 50)
+
+    # ===== معالج الأخطاء للتعامل مع Conflict وأخطاء أخرى =====
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """معالج عام للأخطاء مع تركيز خاص على خطأ Conflict"""
+        from telegram.error import Conflict, TimedOut, NetworkError
+
+        error = context.error
+
+        # التعامل مع خطأ Conflict (نسخة أخرى من البوت تعمل)
+        if isinstance(error, Conflict):
+            logger.error("=" * 50)
+            logger.error("❌ خطأ Conflict: نسخة أخرى من البوت تعمل!")
+            logger.error("⚠️ Telegram API يرفض الاتصال - هناك نسخة أخرى نشطة")
+            logger.error("💡 الحل:")
+            logger.error("   1. أوقف جميع نسخ البوت الأخرى")
+            logger.error("   2. تحقق من: ps aux | grep bot.py")
+            logger.error("   3. ثم قم بإنهاء العمليات: kill -9 <PID>")
+            logger.error("   4. أو ابحث عن نسخ تعمل على خوادم أخرى")
+            logger.error("=" * 50)
+            # إيقاف البوت الحالي لتجنب تكرار الخطأ
+            import asyncio
+            await application.stop()
+            sys.exit(1)
+
+        # التعامل مع أخطاء الشبكة (تحذير فقط - لا إيقاف)
+        elif isinstance(error, (TimedOut, NetworkError)):
+            logger.warning(f"⚠️ خطأ شبكة مؤقت: {error}")
+            # لا نوقف البوت - سيعاود المحاولة تلقائياً
+
+        # أخطاء أخرى
+        else:
+            logger.error(f"❌ خطأ غير معالج: {error}")
+
+            # إرسال إشعار بالخطأ إذا كان لدينا update
+            try:
+                await send_error_notification(
+                    context.bot,
+                    error_type=type(error).__name__,
+                    error_message=str(error),
+                    update=update if isinstance(update, Update) else None
+                )
+            except Exception as notification_error:
+                logger.error(f"⚠️ فشل إرسال إشعار الخطأ: {notification_error}")
+
+    # تسجيل معالج الأخطاء
+    application.add_error_handler(error_handler)
+    logger.info("✅ تم تسجيل معالج الأخطاء (مع حماية Conflict)")
 
     # Mission 10: جدولة التقرير اليومي
     try:

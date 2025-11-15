@@ -52,6 +52,7 @@ bot_errors.log
 videos/
 *.tmp
 *.temp
+.bot.lock
 
 # Database
 *.db
