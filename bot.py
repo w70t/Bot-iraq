@@ -443,11 +443,12 @@ def main() -> None:
         # لا نوقف البوت في وضع الاختبار
 
     # إنشاء التطبيق
+    # Performance optimization: increased concurrent_updates from 10 to 100
     application = (
         Application.builder()
         .token(BOT_TOKEN)
         .post_init(post_init)
-        .concurrent_updates(10)
+        .concurrent_updates(100)
         .build()
     )
 

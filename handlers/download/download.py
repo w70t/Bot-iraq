@@ -17,11 +17,13 @@ import logging
 import httpx
 
 # ThreadPoolExecutor for async subprocess execution
-executor = ThreadPoolExecutor(max_workers=5)
+# Performance optimization: increased from 5 to 20 workers for faster FFmpeg processing
+executor = ThreadPoolExecutor(max_workers=20)
 
 # ===== Per-user cancel download support =====
 ACTIVE_DOWNLOADS = {}  # user_id -> asyncio.Task
-USER_SEMAPHORE = defaultdict(lambda: asyncio.Semaphore(2))  # max 2 concurrent per user
+# Performance optimization: increased from 2 to 5 concurrent downloads per user
+USER_SEMAPHORE = defaultdict(lambda: asyncio.Semaphore(5))  # max 5 concurrent per user
 PLAYLISTS = {}  # user_id -> {entries: list, quality: str, progress_msg: Message}
 CANCEL_MESSAGES = {}  # user_id -> Message (for updating progress)
 SELECTED_VIDEOS = defaultdict(set)  # user_id -> set of selected video indices
@@ -29,7 +31,8 @@ SELECTED_VIDEOS = defaultdict(set)  # user_id -> set of selected video indices
 # ===== Batch YouTube download support =====
 YOUTUBE_REGEX = re.compile(r'(https?://(?:www\.)?(?:youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+))')
 BATCH_MAX_URLS = 6
-PER_USER_BATCH_CONCURRENCY = 2
+# Performance optimization: increased from 2 to 5 for faster batch downloads
+PER_USER_BATCH_CONCURRENCY = 5
 
 # ===== Server Load Monitoring (V5.0.1) =====
 from collections import deque

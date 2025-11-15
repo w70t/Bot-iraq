@@ -128,7 +128,8 @@ async def setup_bot_menu(bot):
 
 # قاموس لتتبع آخر طلب لكل مستخدم
 _user_last_request = {}
-_RATE_LIMIT_SECONDS = 10  # 10 ثواني بين كل طلب
+# Performance optimization: reduced from 10 to 3 seconds for faster response
+_RATE_LIMIT_SECONDS = 3  # 3 ثواني بين كل طلب
 
 
 def rate_limit(seconds: int = None):
