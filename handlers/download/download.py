@@ -576,7 +576,8 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     flexible_platforms = is_facebook or is_pinterest or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter
     if flexible_platforms and quality != 'audio':
         # محاولة عدة خيارات بالترتيب - مرن للغاية
-        format_choice = 'b/bv/bv*+ba/b*/w'  # best, best video, best video+audio, best any, worst
+        # Pinterest وبعض المنصات تحتاج format مرن جداً
+        format_choice = 'best/bestvideo+bestaudio/bestvideo/b/bv*+ba/bv*/w'  # أكثر مرونة
 
     # إعدادات أساسية
     ydl_opts = {
