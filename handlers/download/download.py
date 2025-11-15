@@ -572,10 +572,11 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
     format_choice = quality_formats.get(quality, 'best')
 
-    # Pinterest يحتاج format مرن - يحاول عدة خيارات متاحة
+    # Pinterest - نترك الاختيار التلقائي (لا نحدد format)
     if is_pinterest and quality != 'audio':
-        # محاولة عدة صيغ بالترتيب حتى نجد واحدة متاحة
-        format_choice = 'best/bestvideo+bestaudio/bestvideo/b/bv*+ba/bv*/w'
+        # ترك yt-dlp يختار تلقائياً - أكثر مرونة
+        format_choice = None
+        logger.info("🎨 Pinterest: استخدام الاختيار التلقائي للصيغة")
     # باقي المنصات المرنة (Facebook, Reddit, Twitter, Vimeo, Dailymotion, Twitch)
     elif (is_facebook or is_reddit or is_vimeo or is_dailymotion or is_twitch or is_twitter) and quality != 'audio':
         # محاولة عدة خيارات بالترتيب - مرن للغاية
@@ -1280,14 +1281,43 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         progress_tracker = DownloadProgressTracker(processing_message, lang, loop, is_audio=is_audio)
         ydl_opts['progress_hooks'] = [progress_tracker.progress_hook]
 
+        # تتبع الأخطاء المتقدم - معرفة الصيغة المستخدمة
+        format_used = ydl_opts.get('format', 'auto')
+        is_pinterest = 'pinterest.com' in url or 'pin.it' in url
+        logger.info(f"🎬 بدء التحميل - الرابط: {url[:50]}...")
+        logger.info(f"📊 الصيغة المستخدمة: {format_used}")
+
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 # تحميل الملف
                 await loop.run_in_executor(None, lambda: ydl.download([url]))
         except DownloadError as e:
             error_msg = str(e).lower()
+
+            # تتبع الأخطاء المتقدم - تسجيل تفاصيل الخطأ
+            logger.error(f"❌ خطأ في التحميل: {error_msg[:200]}")
+            logger.error(f"📊 الصيغة التي تم استخدامها: {format_used}")
+
+            # خطأ format غير متاح - محاولة مرة أخرى بدون format
+            if "requested format is not available" in error_msg or "format" in error_msg:
+                logger.warning("⚠️ خطأ format - محاولة التحميل بدون تحديد format")
+
+                # إزالة format والمحاولة مرة أخرى
+                if 'format' in ydl_opts:
+                    del ydl_opts['format']
+                    logger.info("🔄 إعادة المحاولة بالاختيار التلقائي...")
+
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            await loop.run_in_executor(None, lambda: ydl.download([url]))
+                        logger.info("✅ نجحت المحاولة الثانية بالاختيار التلقائي!")
+                    except Exception as retry_error:
+                        logger.error(f"❌ فشلت المحاولة الثانية أيضاً: {str(retry_error)[:200]}")
+                        raise
+                else:
+                    raise
             # التعامل مع أخطاء تسجيل الدخول للمحتوى الخاص
-            if "log in" in error_msg or "login" in error_msg or "private" in error_msg or "members only" in error_msg:
+            elif "log in" in error_msg or "login" in error_msg or "private" in error_msg or "members only" in error_msg:
                 await processing_message.edit_text(
                     "❌ **لا يمكن تحميل هذا المحتوى**\n"
                     "Cannot download this content\n\n"
