@@ -809,11 +809,13 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         # التحقق من توفر curl_cffi قبل إضافة impersonate
         try:
             import curl_cffi
+            from yt_dlp.networking.impersonate import ImpersonateTarget
             logger.info("🎵 [TikTok] curl_cffi متوفر - إضافة browser impersonation...")
-            ydl_opts['impersonate'] = 'Chrome-131'
-            logger.info("✅ [TikTok] تم إضافة impersonate: Chrome-131")
-        except ImportError:
-            logger.warning("⚠️ [TikTok] curl_cffi غير متوفر - browser impersonation معطل")
+            # استخدام ImpersonateTarget بالصيغة الصحيحة
+            ydl_opts['impersonate'] = ImpersonateTarget('chrome', '131', None, None)
+            logger.info("✅ [TikTok] تم إضافة impersonate: chrome-131")
+        except (ImportError, Exception) as e:
+            logger.warning(f"⚠️ [TikTok] browser impersonation معطل: {str(e)}")
             logger.info("🎵 [TikTok] سيتم استخدام compat_opts فقط")
     
     # إعدادات الصوت - محسّنة للسرعة 10x ⚡
