@@ -2409,6 +2409,7 @@ async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TY
     report_id = query.data.split(":")[1]
 
     from database import get_error_report_by_id
+    import re
 
     report = get_error_report_by_id(report_id)
 
@@ -2421,8 +2422,9 @@ async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TY
     url = report.get('url', 'N/A')
     error_type = report.get('error_type', 'خطأ')
     error_message = report.get('error_message', 'لا توجد تفاصيل')
+    created_at = report.get('created_at')
 
-    # إنشاء رابط المراسلة المباشرة للمستخدم (مثل تنبيهات الأعضاء الجدد)
+    # إنشاء رابط المراسلة المباشرة للمستخدم
     user_link = f"tg://user?id={user_id}"
 
     # تنسيق اليوزر مع رابط قابل للنقر
@@ -2433,24 +2435,53 @@ async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         user_display = f"[ID: {user_id}]({user_link})"
 
-    # اختصار الرابط إذا كان طويلاً
-    if len(url) > 60:
-        url_display = url[:60] + "..."
-    else:
-        url_display = url
+    # إزالة رموز ANSI من رسالة الخطأ
+    clean_error = re.sub(r'\x1b\[[0-9;]*m', '', error_message)
+    clean_error = re.sub(r'\[0;[0-9]+m', '', clean_error)
+    clean_error = re.sub(r'\[0m', '', clean_error)
 
+    # استخراج اسم النطاق من الرابط للعرض المختصر
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc.replace('www.', '')
+        path_short = parsed.path[:30] + '...' if len(parsed.path) > 30 else parsed.path
+        url_display = f"{domain}{path_short}"
+    except:
+        url_display = url[:40] + '...' if len(url) > 40 else url
+
+    # استخراج نوع المشكلة من رسالة الخطأ
+    error_problem = clean_error.split(':')[0].strip() if ':' in clean_error else clean_error[:50]
+
+    # التاريخ والوقت
+    if created_at:
+        time_str = created_at.strftime('%H:%M')
+        date_str = created_at.strftime('%d-%m-%Y')
+    else:
+        time_str = 'N/A'
+        date_str = 'N/A'
+
+    # التصميم #6 - بطاقة معلومات
     message_text = (
-        f"🔍 **تفاصيل البلاغ:**\n\n"
-        f"👤 **المستخدم:** {user_display}\n"
-        f"🔗 **الرابط:** `{url_display}`\n"
-        f"⚠️ **نوع الخطأ:** {error_type}\n"
-        f"💬 **الرسالة:**\n```\n{error_message[:150]}\n```\n\n"
-        f"🔧 **هل تم حل المشكلة؟**\n"
-        f"💡 _اضغط على اسم المستخدم أعلاه لمراسلته مباشرة_"
+        "┏━━━━━━━━━━━━━━━━━━━━━┓\n"
+        "┃   📋 تفاصيل البلاغ    ┃\n"
+        "┗━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        "┌ 👤 المستخدم\n"
+        f"│ • الاسم: {user_display}\n"
+        f"│ • الآيدي: `{user_id}`\n"
+        "└─────────────────────\n\n"
+        "┌ 🔴 الخطأ\n"
+        f"│ • النوع: {error_type}\n"
+        f"│ • المشكلة: {error_problem}\n"
+        f"│ • الرابط: `{url_display}`\n"
+        "└─────────────────────\n\n"
+        f"🕐 {time_str} — 📅 {date_str}\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 استخدم الأزرار أدناه للتواصل أو الحل"
     )
 
     keyboard = [
-        [InlineKeyboardButton("✅ نعم، تم الحل (إرسال إشعار)", callback_data=f"confirm_resolve:{report_id}")],
+        [InlineKeyboardButton("✅ تم الحل (إرسال إشعار)", callback_data=f"confirm_resolve:{report_id}")],
         [InlineKeyboardButton("💬 مراسلة المستخدم", url=user_link)],
         [InlineKeyboardButton("❌ لم تُحل بعد", callback_data="admin_error_reports")],
         [InlineKeyboardButton("🔙 العودة", callback_data="admin_error_reports")]
