@@ -37,20 +37,179 @@ class ChannelManager:
         self._log_configuration()
 
     def _log_configuration(self):
-        """Log which channels are configured"""
-        channels_status = {
-            "Logs": "✅" if self.log_channel else "❌",
-            "Videos": "✅" if self.videos_channel else "❌",
-            "New Users": "✅" if self.new_users_channel else "❌",
-            "Statistics": "✅" if self.stats_channel else "❌",
-            "Admin": "✅" if self.admin_channel else "❌",
-            "Updates (Manual)": "✅" if self.updates_channel else "❌"
-        }
-        logger.info(f"Channel Manager Configuration: {channels_status}")
+        """Log which channels are configured with detailed information"""
+        logger.info("=" * 70)
+        logger.info("📢 CHANNEL MANAGER CONFIGURATION")
+        logger.info("=" * 70)
+
+        # تحليل شامل لكل قناة
+        channels_info = [
+            {
+                "name": "Logs Channel",
+                "id": self.log_channel,
+                "env_var": "LOG_CHANNEL_ID",
+                "purpose": "Bot events and errors logging"
+            },
+            {
+                "name": "Videos Channel",
+                "id": self.videos_channel,
+                "env_var": "VIDEOS_CHANNEL_ID",
+                "purpose": "Downloaded videos backup"
+            },
+            {
+                "name": "New Users Channel",
+                "id": self.new_users_channel,
+                "env_var": "NEW_USERS_CHANNEL_ID",
+                "purpose": "New user registrations tracking"
+            },
+            {
+                "name": "Statistics Channel",
+                "id": self.stats_channel,
+                "env_var": "STATS_CHANNEL_ID",
+                "purpose": "Daily statistics reports"
+            },
+            {
+                "name": "Admin Channel",
+                "id": self.admin_channel,
+                "env_var": "ADMIN_CHANNEL_ID",
+                "purpose": "Automatic notifications (startup/shutdown)"
+            },
+            {
+                "name": "Updates Channel",
+                "id": self.updates_channel,
+                "env_var": "UPDATES_CHANNEL_USERNAME",
+                "purpose": "Manual announcements only (@iraq_7kmmy)"
+            }
+        ]
+
+        configured_count = 0
+        missing_count = 0
+
+        for channel in channels_info:
+            if channel["id"]:
+                configured_count += 1
+                logger.info(f"✅ {channel['name']}: CONFIGURED")
+                logger.info(f"   └─ ID: {channel['id']}")
+                logger.info(f"   └─ Purpose: {channel['purpose']}")
+            else:
+                missing_count += 1
+                logger.warning(f"❌ {channel['name']}: NOT CONFIGURED")
+                logger.warning(f"   └─ Env Variable: {channel['env_var']}")
+                logger.warning(f"   └─ Purpose: {channel['purpose']}")
+                logger.warning(f"   └─ Action Required: Add {channel['env_var']} to .env file")
+
+            logger.info("-" * 70)
+
+        # ملخص
+        logger.info(f"📊 SUMMARY: {configured_count}/6 channels configured")
+
+        if missing_count > 0:
+            logger.warning(f"⚠️ WARNING: {missing_count} channel(s) not configured")
+            logger.warning(f"💡 Some features may not work without these channels")
+            logger.warning(f"📝 Add the missing environment variables to .env file")
+        else:
+            logger.info(f"🎉 All channels are configured correctly!")
+
+        logger.info("=" * 70)
 
     def _get_timestamp(self) -> str:
         """Get formatted timestamp"""
         return datetime.now().strftime("%H:%M — %d-%m-%Y")
+
+    async def test_all_channels(self, bot: Bot) -> dict:
+        """
+        Test connectivity to all configured channels
+        This is useful for diagnosing channel setup issues
+
+        Args:
+            bot: Telegram Bot instance
+
+        Returns:
+            dict: Results of channel tests {channel_name: success_status}
+        """
+        logger.info("=" * 70)
+        logger.info("🧪 TESTING CHANNEL CONNECTIVITY")
+        logger.info("=" * 70)
+
+        test_results = {}
+        channels_to_test = [
+            ("Logs", self.log_channel),
+            ("Videos", self.videos_channel),
+            ("New Users", self.new_users_channel),
+            ("Statistics", self.stats_channel),
+            ("Admin", self.admin_channel),
+        ]
+
+        for channel_name, channel_id in channels_to_test:
+            if not channel_id:
+                logger.warning(f"⏭️ Skipping {channel_name}: Not configured")
+                test_results[channel_name] = "not_configured"
+                continue
+
+            logger.info(f"🔍 Testing {channel_name} channel ({channel_id})...")
+
+            try:
+                # محاولة الحصول على معلومات القناة
+                chat = await bot.get_chat(chat_id=channel_id)
+
+                # التحقق من أن البوت عضو في القناة
+                bot_member = await bot.get_chat_member(
+                    chat_id=channel_id,
+                    user_id=bot.id
+                )
+
+                # التحقق من الصلاحيات
+                can_post = bot_member.status in ["administrator", "creator"]
+                can_edit = getattr(bot_member, "can_post_messages", False) if bot_member.status == "administrator" else True
+
+                if can_post:
+                    logger.info(f"   ✅ {channel_name}: Connection successful")
+                    logger.info(f"      └─ Channel Title: {chat.title}")
+                    logger.info(f"      └─ Bot Status: {bot_member.status}")
+                    logger.info(f"      └─ Can Post: {'Yes' if can_edit or bot_member.status == 'creator' else 'No'}")
+                    test_results[channel_name] = "success"
+                else:
+                    logger.error(f"   ❌ {channel_name}: Bot is not admin!")
+                    logger.error(f"      └─ Bot Status: {bot_member.status}")
+                    logger.error(f"      └─ Action: Make bot admin in the channel")
+                    test_results[channel_name] = "not_admin"
+
+            except TelegramError as e:
+                error_str = str(e).lower()
+                if "chat not found" in error_str:
+                    logger.error(f"   ❌ {channel_name}: Channel not found")
+                    logger.error(f"      └─ Channel ID: {channel_id}")
+                    logger.error(f"      └─ Issue: Invalid channel ID or bot removed")
+                    test_results[channel_name] = "not_found"
+                elif "forbidden" in error_str:
+                    logger.error(f"   ❌ {channel_name}: Access forbidden")
+                    logger.error(f"      └─ Issue: Bot not added to channel or blocked")
+                    test_results[channel_name] = "forbidden"
+                else:
+                    logger.error(f"   ❌ {channel_name}: Telegram error - {str(e)}")
+                    test_results[channel_name] = f"error: {str(e)}"
+
+            except Exception as e:
+                logger.error(f"   ❌ {channel_name}: Unexpected error - {str(e)}")
+                test_results[channel_name] = f"unexpected_error: {str(e)}"
+
+        # ملخص النتائج
+        logger.info("-" * 70)
+        success_count = sum(1 for v in test_results.values() if v == "success")
+        total_configured = sum(1 for v in test_results.values() if v != "not_configured")
+
+        logger.info(f"📊 TEST RESULTS: {success_count}/{total_configured} channels accessible")
+
+        if success_count == total_configured and total_configured > 0:
+            logger.info(f"🎉 All configured channels are working correctly!")
+        elif success_count > 0:
+            logger.warning(f"⚠️ Some channels have issues - check logs above")
+        else:
+            logger.error(f"❌ No channels are accessible - check configuration")
+
+        logger.info("=" * 70)
+
+        return test_results
 
     async def _send_message(
         self,
@@ -62,7 +221,7 @@ class ChannelManager:
         disable_notification: bool = False
     ) -> bool:
         """
-        Internal method to send message to a channel
+        Internal method to send message to a channel with detailed error tracking
 
         Args:
             bot: Telegram Bot instance
@@ -75,25 +234,142 @@ class ChannelManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        # تحقق من وجود معرف القناة
         if not channel_id:
-            logger.debug(f"⚠️ {channel_name} channel not configured, skipping notification")
+            logger.warning(f"=" * 60)
+            logger.warning(f"⚠️ CHANNEL ERROR: {channel_name} channel not configured!")
+            logger.warning(f"📝 Channel Name: {channel_name}")
+            logger.warning(f"🔴 Issue: No channel ID found in environment variables")
+            logger.warning(f"💡 Solution:")
+
+            # اقتراحات بناءً على اسم القناة
+            env_var_map = {
+                "Logs": "LOG_CHANNEL_ID",
+                "Videos": "VIDEOS_CHANNEL_ID",
+                "New Users": "NEW_USERS_CHANNEL_ID",
+                "Statistics": "STATS_CHANNEL_ID",
+                "Admin": "ADMIN_CHANNEL_ID",
+                "Updates (Manual)": "UPDATES_CHANNEL_USERNAME"
+            }
+
+            env_var = env_var_map.get(channel_name, f"{channel_name.upper()}_CHANNEL_ID")
+            logger.warning(f"   1. Add {env_var} to your .env file")
+            logger.warning(f"   2. Make sure the bot is added as admin to the channel")
+            logger.warning(f"   3. Restart the bot after adding the environment variable")
+            logger.warning(f"=" * 60)
             return False
 
+        # تسجيل تفاصيل محاولة الإرسال
+        logger.info(f"━" * 60)
+        logger.info(f"📤 ATTEMPTING TO SEND MESSAGE TO CHANNEL")
+        logger.info(f"📝 Channel Name: {channel_name}")
+        logger.info(f"🆔 Channel ID: {channel_id}")
+        logger.info(f"📏 Message Length: {len(message)} characters")
+        logger.info(f"🎨 Parse Mode: {parse_mode}")
+        logger.info(f"🔕 Silent: {disable_notification}")
+        logger.info(f"━" * 60)
+
         try:
-            await bot.send_message(
+            # محاولة الإرسال
+            result = await bot.send_message(
                 chat_id=channel_id,
                 text=message,
                 parse_mode=parse_mode,
                 disable_notification=disable_notification
             )
-            logger.info(f"✅ Message sent to {channel_name} channel ({channel_id})")
+
+            # تسجيل نجاح الإرسال
+            logger.info(f"✅ SUCCESS: Message sent to {channel_name} channel")
+            logger.info(f"📨 Message ID: {result.message_id}")
+            logger.info(f"⏰ Sent at: {datetime.now().strftime('%H:%M:%S')}")
+            logger.info(f"━" * 60)
             return True
 
         except TelegramError as e:
-            logger.warning(f"⚠️ Failed to send to {channel_name} channel: {e}")
+            # تتبع تفصيلي لأخطاء Telegram
+            logger.error(f"=" * 60)
+            logger.error(f"❌ TELEGRAM ERROR: Failed to send to {channel_name} channel")
+            logger.error(f"📝 Channel Name: {channel_name}")
+            logger.error(f"🆔 Channel ID: {channel_id}")
+            logger.error(f"🔴 Error Type: {type(e).__name__}")
+            logger.error(f"📄 Error Message: {str(e)}")
+
+            # تحليل أنواع الأخطاء الشائعة
+            error_str = str(e).lower()
+
+            if "chat not found" in error_str or "chat_not_found" in error_str:
+                logger.error(f"💡 DIAGNOSIS: Channel ID is invalid or bot cannot find the channel")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Verify the channel ID is correct: {channel_id}")
+                logger.error(f"   2. Make sure the channel exists and is not deleted")
+                logger.error(f"   3. Check if the ID format is correct (should start with -100)")
+                logger.error(f"   4. For usernames, ensure format is @channelname")
+
+            elif "forbidden" in error_str or "bot was blocked" in error_str:
+                logger.error(f"💡 DIAGNOSIS: Bot doesn't have permission to send messages")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Add the bot as an administrator to the channel")
+                logger.error(f"   2. Grant 'Post Messages' permission to the bot")
+                logger.error(f"   3. If bot was removed, re-add it to the channel")
+                logger.error(f"   4. Verify bot token is correct and active")
+
+            elif "message is too long" in error_str:
+                logger.error(f"💡 DIAGNOSIS: Message exceeds Telegram's 4096 character limit")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Current message length: {len(message)} characters")
+                logger.error(f"   2. Need to split message into multiple parts")
+                logger.error(f"   3. Or reduce message content")
+
+            elif "can't parse" in error_str or "parse_mode" in error_str:
+                logger.error(f"💡 DIAGNOSIS: Invalid Markdown/HTML formatting in message")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Check for unescaped special characters")
+                logger.error(f"   2. Verify Markdown syntax is correct")
+                logger.error(f"   3. Try sending without parse_mode to test")
+                logger.error(f"📝 Message preview (first 200 chars):")
+                logger.error(f"   {message[:200]}")
+
+            elif "timeout" in error_str or "timed out" in error_str:
+                logger.error(f"💡 DIAGNOSIS: Network timeout - connection to Telegram servers failed")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Check internet connection")
+                logger.error(f"   2. Retry the operation")
+                logger.error(f"   3. Check if Telegram API is down")
+
+            else:
+                logger.error(f"💡 DIAGNOSIS: Unknown Telegram error")
+                logger.error(f"✅ SOLUTIONS:")
+                logger.error(f"   1. Check Telegram API documentation for error code")
+                logger.error(f"   2. Verify bot token and permissions")
+                logger.error(f"   3. Contact Telegram support if issue persists")
+                logger.error(f"📝 Full error details: {repr(e)}")
+
+            logger.error(f"=" * 60)
             return False
+
         except Exception as e:
-            logger.error(f"❌ Error sending to {channel_name} channel: {e}")
+            # تتبع تفصيلي للأخطاء العامة
+            logger.error(f"=" * 60)
+            logger.error(f"❌ UNEXPECTED ERROR: Failed to send to {channel_name} channel")
+            logger.error(f"📝 Channel Name: {channel_name}")
+            logger.error(f"🆔 Channel ID: {channel_id}")
+            logger.error(f"🔴 Error Type: {type(e).__name__}")
+            logger.error(f"📄 Error Message: {str(e)}")
+            logger.error(f"📍 Error Details: {repr(e)}")
+
+            # استخراج stack trace إذا كان متاحاً
+            import traceback
+            stack_trace = traceback.format_exc()
+            logger.error(f"📚 Stack Trace:")
+            logger.error(stack_trace)
+
+            logger.error(f"💡 DIAGNOSIS: Unexpected error - not a Telegram API error")
+            logger.error(f"✅ SOLUTIONS:")
+            logger.error(f"   1. Check the error stack trace above")
+            logger.error(f"   2. Verify bot object is properly initialized")
+            logger.error(f"   3. Check for coding errors in the message content")
+            logger.error(f"   4. Report this error if it persists")
+            logger.error(f"=" * 60)
             return False
 
     # ═══════════════════════════════════════════════════════════
