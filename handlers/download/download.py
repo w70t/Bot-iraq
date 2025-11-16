@@ -153,78 +153,6 @@ async def track_limit_rejection(context: ContextTypes.DEFAULT_TYPE, user_id: int
     except Exception as e:
         logger.error(f"Error in track_limit_rejection: {e}")
 
-
-class DownloadProgressTracker:
-    """تتبع تقدم التحميل - نسخة مبسطة"""
-    def __init__(self, message, lang, loop, is_audio=False):
-        self.message = message
-        self.lang = lang
-        self.loop = loop
-        self.last_update_time = 0
-        self.last_percentage = -1
-        self.is_audio = is_audio
-        self.extraction_notified = False
-
-    def progress_hook(self, d):
-        if d['status'] == 'downloading':
-            try:
-                current_time = time.time()
-                # تحديث كل 2 ثانية
-                if current_time - self.last_update_time < 2:
-                    return
-
-                downloaded = d.get('downloaded_bytes', 0)
-                total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
-
-                if total > 0:
-                    percentage = int((downloaded / total) * 100)
-
-                    # تحديث كل 5%
-                    if abs(percentage - self.last_percentage) < 5:
-                        return
-
-                    self.last_percentage = percentage
-                    self.last_update_time = current_time
-
-                    # شريط تقدم بسيط
-                    filled = int(percentage / 5)
-                    empty = 20 - filled
-                    progress_bar = '▓' * filled + '░' * empty
-
-                    # رسالة بسيطة
-                    update_text = f"⏬ جاري التحميل...\n\n{progress_bar} {percentage}%"
-
-                    try:
-                        asyncio.run_coroutine_threadsafe(
-                            self._safe_update(update_text),
-                            self.loop
-                        )
-                    except Exception as e:
-                        logger.debug(f"تحديث التقدم: {e}")
-
-            except Exception as e:
-                log_warning(f"خطأ في تحديث التقدم: {e}", module="handlers/download.py")
-
-        elif d['status'] == 'finished':
-            # عند انتهاء التحميل للصوت
-            if self.is_audio and not self.extraction_notified:
-                self.extraction_notified = True
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        self._safe_update("✅ اكتمل التحميل!\n🎵 جاري استخراج الصوت..."),
-                        self.loop
-                    )
-                except Exception as e:
-                    logger.debug(f"تحديث حالة الاستخراج: {e}")
-
-    async def _safe_update(self, text):
-        """تحديث آمن للرسالة"""
-        try:
-            await self.message.edit_text(text)
-        except Exception as e:
-            if "message is not modified" not in str(e).lower() and "message to edit not found" not in str(e).lower():
-                logger.debug(f"خطأ في تحديث الرسالة: {e}")
-
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
     url_lower = url.lower()
@@ -1356,9 +1284,6 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         # إذا كان فيديو عادي - الكود القديم
         loop = asyncio.get_event_loop()
 
-        progress_tracker = DownloadProgressTracker(processing_message, lang, loop, is_audio=is_audio)
-        ydl_opts['progress_hooks'] = [progress_tracker.progress_hook]
-
         # تتبع الأخطاء المتقدم - معرفة الصيغة المستخدمة
         format_used = ydl_opts.get('format', 'auto')
         is_pinterest = 'pinterest.com' in url or 'pin.it' in url
@@ -1575,23 +1500,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             f"{'🎵' if is_audio else '🎥'} {'💎 VIP' if is_subscribed_user else '🆓 مجاني'}\n\n"
             f"✨ بواسطة @{context.bot.username}"
         )
-        
-        # محاكاة تقدم الرفع
-        for progress in [25, 50, 75]:
-            await asyncio.sleep(0.3)
-            filled = int(progress / 5)
-            empty = 20 - filled
-            bar = f"{'🟩' * filled}{'⬜' * empty}"
-            
-            try:
-                await processing_message.edit_text(
-                    f"📤 جاري الرفع...\n\n"
-                    f"{bar} {progress}%\n\n"
-                    f"📦 الحجم: {total_mb:.1f} MB"
-                )
-            except:
-                pass
-        
+
         # محاولة إرسال الملف مع إعادة المحاولة في حالة TimedOut
         sent_message, upload_error = await send_file_with_retry(
             context=context,
