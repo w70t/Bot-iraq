@@ -401,13 +401,17 @@ class CookieManager:
             return False
 
     async def validate_cookies(self, platform: str) -> bool:
-        """Validate cookies by testing with yt-dlp (with soft validation for Facebook & Instagram)"""
+        """Validate cookies by testing with yt-dlp (with soft validation for Facebook & Instagram & Reddit)"""
         cookie_path = None
         try:
             # Decrypt temporarily
             cookie_path = self.decrypt_cookie_file(platform)
             if not cookie_path:
                 return False
+
+            # Special handling for Reddit with soft validation (no test URL needed)
+            if platform == 'reddit':
+                return await self._validate_reddit_cookies(cookie_path)
 
             # Get test URL(s)
             test_urls = TEST_URLS.get(platform)
@@ -426,10 +430,6 @@ class CookieManager:
             # Special handling for Instagram with soft validation
             if platform == 'instagram':
                 return await self._validate_instagram_cookies(cookie_path, test_urls)
-
-            # Special handling for Reddit with soft validation (no test URL)
-            if platform == 'reddit':
-                return await self._validate_reddit_cookies(cookie_path)
 
             # Standard validation for other platforms
             test_url = test_urls[0] if isinstance(test_urls, list) else test_urls
