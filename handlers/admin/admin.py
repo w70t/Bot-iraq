@@ -2417,17 +2417,34 @@ async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TY
     error_type = report.get('error_type', 'خطأ')
     error_message = report.get('error_message', 'لا توجد تفاصيل')
 
+    # إنشاء رابط المراسلة المباشرة للمستخدم (مثل تنبيهات الأعضاء الجدد)
+    user_link = f"tg://user?id={user_id}"
+
+    # تنسيق اليوزر مع رابط قابل للنقر
+    if username and username != 'مجهول':
+        user_display = f"[{username}]({user_link})"
+    else:
+        user_display = f"[ID: {user_id}]({user_link})"
+
+    # اختصار الرابط إذا كان طويلاً
+    if len(url) > 60:
+        url_display = url[:60] + "..."
+    else:
+        url_display = url
+
     message_text = (
         f"🔍 **تفاصيل البلاغ:**\n\n"
-        f"👤 المستخدم: @{username} (ID: {user_id})\n"
-        f"🔗 الرابط: {url[:50]}...\n"
-        f"⚠️ نوع الخطأ: {error_type}\n"
-        f"💬 الرسالة: {error_message[:100]}...\n\n"
-        f"🔧 **هل تم حل المشكلة؟**"
+        f"👤 **المستخدم:** {user_display}\n"
+        f"🔗 **الرابط:** `{url_display}`\n"
+        f"⚠️ **نوع الخطأ:** {error_type}\n"
+        f"💬 **الرسالة:**\n```\n{error_message[:150]}\n```\n\n"
+        f"🔧 **هل تم حل المشكلة؟**\n"
+        f"💡 _اضغط على اسم المستخدم أعلاه لمراسلته مباشرة_"
     )
 
     keyboard = [
         [InlineKeyboardButton("✅ نعم، تم الحل (إرسال إشعار)", callback_data=f"confirm_resolve:{report_id}")],
+        [InlineKeyboardButton("💬 مراسلة المستخدم", url=user_link)],
         [InlineKeyboardButton("❌ لم تُحل بعد", callback_data="admin_error_reports")],
         [InlineKeyboardButton("🔙 العودة", callback_data="admin_error_reports")]
     ]
