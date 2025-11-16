@@ -618,30 +618,146 @@ def log_error_to_file(error_type: str, user_id: int, url: str, exception: Except
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Cookie Management - Weekly Check Job
+#  Cookie Management - Daily Check Job (Updated from Weekly)
 # ═══════════════════════════════════════════════════════════════
 
-async def check_cookies_weekly(context):
+async def check_cookies_daily(context):
     """
-    مهمة فحص الـ cookies أسبوعياً
-    يتم استدعاؤها تلقائياً كل 7 أيام
+    مهمة فحص الـ cookies يومياً (محدثة من الفحص الأسبوعي)
+    يتم استدعاؤها تلقائياً كل يوم
+
+    Features:
+    - فحص صلاحية cookies لجميع المنصات
+    - اختبار كل منصة على حدة
+    - إرسال تنبيهات مفصلة للأدمن عند الفشل
+    - تتبع أعمار الكوكيز
     """
     try:
         from handlers.cookie_manager import cookie_manager
+        from datetime import datetime
 
-        logger.info("🍪 بدء الفحص الأسبوعي للـ cookies...")
+        logger.info("🍪 بدء الفحص اليومي للـ cookies...")
 
         # Get admin IDs from environment
         admin_ids_str = os.getenv("ADMIN_IDS", "")
         admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
 
-        # Check and alert for expired cookies
-        await cookie_manager.check_and_alert_expired(context, admin_ids)
+        if not admin_ids:
+            logger.warning("⚠️ لا توجد معرفات أدمن، لن يتم إرسال التنبيهات")
+            return
 
-        logger.info("✅ اكتمل الفحص الأسبوعي للـ cookies بنجاح")
+        # Get all cookie statuses
+        status = cookie_manager.get_cookie_status()
+
+        # ⭐ قائمة المنصات المدعومة (متضمنة Threads)
+        platforms_to_check = ['facebook', 'instagram', 'threads', 'tiktok', 'pinterest',
+                              'twitter', 'reddit', 'vimeo', 'dailymotion', 'twitch']
+
+        failed_platforms = []
+        expired_platforms = []
+        success_platforms = []
+
+        # اختبار كل منصة على حدة
+        for platform in platforms_to_check:
+            platform_status = status.get(platform, {})
+
+            if not platform_status.get('exists', False):
+                # الكوكيز غير موجودة أصلاً
+                continue
+
+            # فحص العمر
+            age_days = platform_status.get('age_days', 0)
+            if age_days > 30:
+                expired_platforms.append({
+                    'platform': platform,
+                    'age_days': age_days,
+                    'last_validated': platform_status.get('last_validated', 'Never')
+                })
+
+            # اختبار صلاحية الكوكيز
+            logger.info(f"🔍 اختبار كوكيز {platform}...")
+            is_valid = await cookie_manager.validate_cookies(platform)
+
+            if is_valid:
+                success_platforms.append(platform)
+                logger.info(f"✅ {platform}: الكوكيز صالحة")
+            else:
+                failed_platforms.append(platform)
+                logger.error(f"❌ {platform}: الكوكيز فاشلة")
+                # حذف الكوكيز الفاشلة
+                cookie_manager.delete_cookies(platform)
+
+        # إرسال تقرير شامل للأدمن
+        report_message = f"🍪 **تقرير فحص الكوكيز اليومي**\n"
+        report_message += f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+        # المنصات الناجحة
+        if success_platforms:
+            report_message += f"✅ **الكوكيز الصالحة** ({len(success_platforms)}):\n"
+            for platform in success_platforms:
+                platform_info = status.get(platform, {})
+                age = platform_info.get('age_days', 0)
+                report_message += f"  • {platform.capitalize()}: {age} يوم\n"
+            report_message += "\n"
+
+        # المنصات الفاشلة
+        if failed_platforms:
+            report_message += f"❌ **الكوكيز الفاشلة** ({len(failed_platforms)}):\n"
+            for platform in failed_platforms:
+                report_message += f"  • {platform.capitalize()}: تم الحذف تلقائياً\n"
+            report_message += "\n⚠️ **يرجى رفع كوكيز جديدة للمنصات الفاشلة!**\n\n"
+
+        # المنصات القديمة
+        if expired_platforms:
+            report_message += f"⚠️ **الكوكيز القديمة** (أكثر من 30 يوم):\n"
+            for platform_data in expired_platforms:
+                report_message += f"  • {platform_data['platform'].capitalize()}: {platform_data['age_days']} يوم\n"
+            report_message += "\n💡 يُنصح بتحديث هذه الكوكيز قريباً\n\n"
+
+        # إحصائيات عامة
+        total_checked = len(success_platforms) + len(failed_platforms)
+        if total_checked > 0:
+            success_rate = (len(success_platforms) / total_checked) * 100
+            report_message += f"📊 **الإحصائيات:**\n"
+            report_message += f"  • تم الفحص: {total_checked} منصة\n"
+            report_message += f"  • معدل النجاح: {success_rate:.1f}%\n"
+
+        # إرسال التقرير لجميع الأدمنز
+        for admin_id in admin_ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=report_message,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"❌ فشل إرسال التقرير للأدمن {admin_id}: {e}")
+
+        logger.info("✅ اكتمل الفحص اليومي للـ cookies بنجاح")
 
     except Exception as e:
-        logger.error(f"❌ فشل الفحص الأسبوعي للـ cookies: {e}")
+        logger.error(f"❌ فشل الفحص اليومي للـ cookies: {e}")
+
+        # إرسال تنبيه بالخطأ للأدمن
+        try:
+            admin_ids_str = os.getenv("ADMIN_IDS", "")
+            admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+
+            error_message = (
+                f"🔴 **خطأ في فحص الكوكيز اليومي**\n\n"
+                f"❌ الخطأ: `{str(e)}`\n"
+                f"📅 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"⚠️ يرجى فحص السجلات للمزيد من التفاصيل"
+            )
+
+            for admin_id in admin_ids:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=error_message,
+                    parse_mode='Markdown'
+                )
+        except:
+            pass
 
 
 async def backup_cookies_weekly(context):
@@ -693,37 +809,172 @@ async def backup_cookies_weekly(context):
 
 def setup_cookie_check_job(application):
     """
-    إعداد مهمة الفحص الأسبوعي للـ cookies
+    إعداد مهمة الفحص اليومي للـ cookies (محدثة من الفحص الأسبوعي)
     يتم استدعاؤها من bot.py عند بدء التشغيل
+
+    Features:
+    - فحص يومي للكوكيز بدلاً من أسبوعي
+    - نسخ احتياطي أسبوعي (يوم الأحد)
+    - تنبيهات فورية للأدمن عند الفشل
 
     Args:
         application: كائن Application من python-telegram-bot
     """
     from datetime import time
 
-    # فحص الـ cookies أسبوعياً كل يوم أحد في الساعة 00:00 بتوقيت UTC
     job_queue = application.job_queue
 
     if job_queue:
-        # Run weekly check on Sunday at midnight
+        # ⭐ فحص يومي للكوكيز كل يوم في الساعة 00:00 بتوقيت UTC
         job_queue.run_daily(
-            check_cookies_weekly,
+            check_cookies_daily,
             time=time(hour=0, minute=0, second=0),
-            days=(6,),  # Sunday = 6 in python-telegram-bot (0=Monday)
-            name='weekly_cookie_check'
+            name='daily_cookie_check'
         )
+        logger.info("✅ تم جدولة الفحص اليومي للـ cookies (كل يوم في منتصف الليل)")
 
-        # Run weekly backup on Sunday at 00:30 UTC (30 minutes after check)
+        # النسخ الاحتياطي الأسبوعي كل يوم أحد في الساعة 00:30 UTC
         job_queue.run_daily(
             backup_cookies_weekly,
             time=time(hour=0, minute=30, second=0),
             days=(6,),  # Sunday = 6 in python-telegram-bot (0=Monday)
             name='weekly_cookie_backup'
         )
+        logger.info("✅ تم جدولة النسخ الاحتياطي الأسبوعي للـ cookies (كل يوم أحد)")
 
-        logger.info("✅ تم جدولة الفحص والنسخ الاحتياطي الأسبوعي للـ cookies (كل يوم أحد)")
     else:
-        logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة المهام الأسبوعية للـ cookies")
+        logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة المهام اليومية للـ cookies")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Error Tracking & Daily Error Reports for Admins
+# ═══════════════════════════════════════════════════════════════
+
+async def send_error_logs_to_admin(context):
+    """
+    إرسال سجلات الأخطاء اليومية للأدمن
+
+    Features:
+    - تجميع جميع أخطاء اليوم
+    - تصنيف الأخطاء حسب النوع
+    - إرسال تقرير مفصل للأدمن
+    - حذف الأخطاء القديمة تلقائياً
+    """
+    try:
+        from core.utils.error_tracker import ErrorTracker
+        from datetime import datetime
+
+        logger.info("📊 بدء إرسال تقرير الأخطاء اليومي...")
+
+        # Get admin IDs from environment
+        admin_ids_str = os.getenv("ADMIN_IDS", "")
+        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
+
+        if not admin_ids:
+            logger.warning("⚠️ لا توجد معرفات أدمن، لن يتم إرسال التقارير")
+            return
+
+        # الحصول على إحصائيات الأخطاء لآخر 24 ساعة
+        stats = ErrorTracker.get_error_stats(hours=24)
+
+        if stats['total'] == 0:
+            # لا توجد أخطاء - إرسال تقرير إيجابي
+            report_message = (
+                f"✅ **تقرير الأخطاء اليومي**\n\n"
+                f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"🎉 **لا توجد أخطاء في آخر 24 ساعة!**\n\n"
+                f"💚 النظام يعمل بكفاءة عالية"
+            )
+        else:
+            # توجد أخطاء - إرسال تقرير مفصل
+            report_message = (
+                f"🔴 **تقرير الأخطاء اليومي**\n\n"
+                f"📅 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                f"📊 **إجمالي الأخطاء:** {stats['total']}\n\n"
+            )
+
+            # تصنيف حسب النوع
+            if stats['by_type']:
+                report_message += f"**حسب النوع:**\n"
+                for error_type, count in sorted(stats['by_type'].items(), key=lambda x: x[1], reverse=True):
+                    report_message += f"  • {error_type}: {count}\n"
+                report_message += "\n"
+
+            # تصنيف حسب الفئة
+            if stats['by_category']:
+                report_message += f"**حسب الفئة:**\n"
+                category_names = {
+                    'unsupported_url': 'رابط غير مدعوم',
+                    'private_content': 'محتوى خاص',
+                    'content_not_found': 'محتوى غير موجود',
+                    'timeout': 'انتهاء المهلة',
+                    'network_error': 'خطأ شبكة',
+                    'cookie_issue': 'مشكلة كوكيز',
+                    'extractor_error': 'خطأ extractor',
+                    'unknown': 'غير معروف'
+                }
+                for category, count in sorted(stats['by_category'].items(), key=lambda x: x[1], reverse=True):
+                    cat_name = category_names.get(category, category)
+                    report_message += f"  • {cat_name}: {count}\n"
+                report_message += "\n"
+
+            # تصنيف حسب المنصة
+            if stats['by_platform']:
+                report_message += f"**حسب المنصة:**\n"
+                for platform, count in sorted(stats['by_platform'].items(), key=lambda x: x[1], reverse=True):
+                    if platform != 'unknown':
+                        report_message += f"  • {platform.capitalize()}: {count}\n"
+                report_message += "\n"
+
+            # الأخطاء الأخيرة (آخر 5)
+            recent_errors = ErrorTracker.get_recent_errors(limit=5)
+            if recent_errors:
+                report_message += f"**آخر الأخطاء:**\n"
+                for i, error in enumerate(recent_errors[-5:], 1):
+                    error_msg = error.get('error_message', 'N/A')
+                    if len(error_msg) > 60:
+                        error_msg = error_msg[:60] + "..."
+                    error_type = error.get('error_type', 'unknown')
+                    report_message += f"{i}. [{error_type}] {error_msg}\n"
+
+        # إرسال التقرير لجميع الأدمنز
+        for admin_id in admin_ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=report_message,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"❌ فشل إرسال تقرير الأخطاء للأدمن {admin_id}: {e}")
+
+        logger.info("✅ اكتمل إرسال تقرير الأخطاء اليومي بنجاح")
+
+    except Exception as e:
+        logger.error(f"❌ فشل إرسال تقرير الأخطاء اليومي: {e}")
+
+
+def setup_error_tracking_job(application):
+    """
+    إعداد مهمة إرسال تقارير الأخطاء اليومية
+
+    Args:
+        application: كائن Application من python-telegram-bot
+    """
+    from datetime import time
+
+    job_queue = application.job_queue
+
+    if job_queue:
+        # إرسال تقرير الأخطاء يومياً في الساعة 23:00 UTC
+        job_queue.run_daily(
+            send_error_logs_to_admin,
+            time=time(hour=23, minute=0, second=0),
+            name='daily_error_report'
+        )
+        logger.info("✅ تم جدولة إرسال تقرير الأخطاء اليومي (كل يوم في 23:00 UTC)")
+    else:
+        logger.warning("⚠️ job_queue غير متاح، لن يتم جدولة تقارير الأخطاء")
 
 
 # ═══════════════════════════════════════════════════════════════

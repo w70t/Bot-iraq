@@ -816,13 +816,21 @@ def main() -> None:
     except Exception as e:
         logger.error(f"❌ فشل جدولة التقرير اليومي: {e}")
 
-    # Cookie Management V5.0: جدولة الفحص الأسبوعي للـ cookies
+    # Cookie Management V5.0: جدولة الفحص اليومي للـ cookies (محدث من أسبوعي)
     try:
         from utils import setup_cookie_check_job
         setup_cookie_check_job(application)
-        logger.info("✅ تم جدولة الفحص الأسبوعي للـ cookies بنجاح")
+        logger.info("✅ تم جدولة الفحص اليومي للـ cookies بنجاح")
     except Exception as e:
-        logger.error(f"❌ فشل جدولة الفحص الأسبوعي للـ cookies: {e}")
+        logger.error(f"❌ فشل جدولة الفحص اليومي للـ cookies: {e}")
+
+    # Error Tracking: جدولة تقارير الأخطاء اليومية
+    try:
+        from utils import setup_error_tracking_job
+        setup_error_tracking_job(application)
+        logger.info("✅ تم جدولة تقارير الأخطاء اليومية بنجاح")
+    except Exception as e:
+        logger.error(f"❌ فشل جدولة تقارير الأخطاء اليومية: {e}")
 
     # تشغيل البوت
     try:
