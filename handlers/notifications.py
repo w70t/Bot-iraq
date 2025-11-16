@@ -1,22 +1,25 @@
 """
 Notification System for Bot Updates and Alerts
 Sends notifications to the update channel (@iraq_7kmmy)
+
+This module now uses the ChannelManager for multi-channel support
 """
 import os
 import logging
 from datetime import datetime
 from telegram import Bot
 from telegram.error import TelegramError
+from handlers.channel_manager import channel_manager
 
 logger = logging.getLogger(__name__)
 
-# Update channel configuration
+# Update channel configuration (deprecated - use channel_manager)
 UPDATE_CHANNEL_USERNAME = "@iraq_7kmmy"  # https://t.me/iraq_7kmmy
 
 
 async def send_startup_notification(bot: Bot):
     """
-    Send startup notification to update channel
+    Send startup notification to update channel and logs channel
     Called when bot successfully starts
     """
     try:
@@ -30,16 +33,21 @@ async def send_startup_notification(bot: Bot):
             "• نظام اختيار فيديوهات محددة من القوائم\n"
             "• تتبع دقيق للتقدم (1%)\n"
             "• تفاعلات تلقائية 👀\n"
-            "• نظام الإحالة والمكافآت\n\n"
+            "• نظام الإحالة والمكافآت\n"
+            "• نظام قنوات متعددة 📢\n\n"
             f"🕒 **الوقت / Time:** {timestamp}\n"
             "⚡ **الحالة / Status:** جاهز للاستخدام"
         )
 
+        # Send to updates channel
         await bot.send_message(
             chat_id=UPDATE_CHANNEL_USERNAME,
             text=message,
             parse_mode='Markdown'
         )
+
+        # Also log to logs channel using channel manager
+        await channel_manager.log_bot_startup(bot)
 
         logger.info(f"✅ Startup notification sent to {UPDATE_CHANNEL_USERNAME}")
         return True
@@ -54,7 +62,7 @@ async def send_startup_notification(bot: Bot):
 
 async def send_shutdown_notification(bot: Bot, reason: str = "Normal shutdown"):
     """
-    Send shutdown notification to update channel
+    Send shutdown notification to update channel and logs channel
 
     Args:
         bot: Telegram Bot instance
@@ -70,11 +78,15 @@ async def send_shutdown_notification(bot: Bot, reason: str = "Normal shutdown"):
             "🔄 سيتم إعادة التشغيل قريباً..."
         )
 
+        # Send to updates channel
         await bot.send_message(
             chat_id=UPDATE_CHANNEL_USERNAME,
             text=message,
             parse_mode='Markdown'
         )
+
+        # Also log to logs channel
+        await channel_manager.log_bot_shutdown(bot, reason)
 
         logger.info(f"✅ Shutdown notification sent to {UPDATE_CHANNEL_USERNAME}")
         return True
@@ -89,7 +101,7 @@ async def send_shutdown_notification(bot: Bot, reason: str = "Normal shutdown"):
 
 async def send_error_notification(bot: Bot, error_type: str, error_message: str):
     """
-    Send error notification to update channel
+    Send error notification to update channel and logs channel
 
     Args:
         bot: Telegram Bot instance
@@ -97,6 +109,10 @@ async def send_error_notification(bot: Bot, error_type: str, error_message: str)
         error_message: Detailed error message
     """
     try:
+        # Log to logs channel using channel manager
+        await channel_manager.log_error(bot, error_type, error_message)
+
+        # Also send to updates channel for critical errors
         timestamp = datetime.now().strftime("%H:%M — %d-%m-%Y")
 
         # Truncate long error messages
@@ -117,7 +133,7 @@ async def send_error_notification(bot: Bot, error_type: str, error_message: str)
             parse_mode='Markdown'
         )
 
-        logger.info(f"✅ Error notification sent to {UPDATE_CHANNEL_USERNAME}")
+        logger.info(f"✅ Error notification sent to channels")
         return True
 
     except TelegramError as e:
@@ -130,7 +146,7 @@ async def send_error_notification(bot: Bot, error_type: str, error_message: str)
 
 async def send_update_notification(bot: Bot, version: str = "Latest", features: list = None):
     """
-    Send update notification to update channel
+    Send update notification to update channel using channel manager
 
     Args:
         bot: Telegram Bot instance
@@ -138,33 +154,15 @@ async def send_update_notification(bot: Bot, version: str = "Latest", features: 
         features: List of new features
     """
     try:
-        timestamp = datetime.now().strftime("%H:%M — %d-%m-%Y")
+        if not features:
+            features = [
+                "تحسينات في الأداء",
+                "إصلاح أخطاء",
+                "تحديثات أمنية"
+            ]
 
-        features_text = ""
-        if features:
-            for feature in features:
-                features_text += f"• {feature}\n"
-        else:
-            features_text = (
-                "• تحسينات في الأداء\n"
-                "• إصلاح أخطاء\n"
-                "• تحديثات أمنية"
-            )
-
-        message = (
-            "🎉 **تحديث جديد متاح / New Update Available**\n\n"
-            f"📦 **الإصدار / Version:** {version}\n\n"
-            "✨ **المميزات الجديدة / New Features:**\n"
-            f"{features_text}\n"
-            f"🕒 **تاريخ التحديث / Update Date:** {timestamp}\n\n"
-            "🚀 التحديث مفعّل الآن!"
-        )
-
-        await bot.send_message(
-            chat_id=UPDATE_CHANNEL_USERNAME,
-            text=message,
-            parse_mode='Markdown'
-        )
+        # Use channel manager for updates
+        await channel_manager.announce_update(bot, version, features)
 
         logger.info(f"✅ Update notification sent to {UPDATE_CHANNEL_USERNAME}")
         return True

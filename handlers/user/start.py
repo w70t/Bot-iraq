@@ -7,50 +7,27 @@ from datetime import datetime
 
 from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
 from utils import get_message
+from handlers.channel_manager import channel_manager
 
 # إعداد logger
 logger = logging.getLogger(__name__)
 
-async def send_new_user_notification(context: ContextTypes.DEFAULT_TYPE, user):
+async def send_new_user_notification(context: ContextTypes.DEFAULT_TYPE, user, referrer_id=None):
     """
-    إرسال إشعار لقناة السجلات عند اشتراك عضو جديد
+    إرسال إشعار لقناة الأعضاء الجدد عند اشتراك عضو جديد
+    Uses the new ChannelManager system
     """
-    log_channel_id = os.getenv("LOG_CHANNEL_ID")
-    if not log_channel_id:
-        logger.warning("⚠️ LOG_CHANNEL_ID غير محدد، لن يتم إرسال إشعار العضو الجديد")
-        return
-
     try:
-        log_channel_id = int(log_channel_id)
-    except (ValueError, TypeError):
-        logger.error(f"❌ LOG_CHANNEL_ID غير صحيح: {log_channel_id}")
-        return
-
-    user_id = user.id
-    user_name = user.full_name
-    username_display = f"@{user.username}" if user.username else "لا يوجد"
-    timestamp = datetime.utcnow().strftime('%d-%m-%Y — %H:%M UTC')
-
-    # بناء رسالة الإشعار
-    notification_text = (
-        f"👋 <b>عضو جديد انضم للبوت!</b>\n"
-        f"{'━' * 30}\n\n"
-        f"👤 <b>معلومات العضو:</b>\n"
-        f"   • الاسم: {user_name}\n"
-        f"   • اليوزر: {username_display}\n"
-        f"   • ID: <code>{user_id}</code>\n\n"
-        f"📅 <b>تاريخ الانضمام:</b> {timestamp}\n"
-        f"{'━' * 30}\n"
-        f"✨ <b>مرحباً بك في عائلة البوت!</b>"
-    )
-
-    try:
-        await context.bot.send_message(
-            chat_id=log_channel_id,
-            text=notification_text,
-            parse_mode='HTML'
+        # Use channel_manager to log new user
+        await channel_manager.log_new_user(
+            bot=context.bot,
+            user_id=user.id,
+            username=user.username,
+            first_name=user.full_name,
+            language_code=user.language_code,
+            referrer_id=referrer_id
         )
-        logger.info(f"✅ تم إرسال إشعار العضو الجديد: {user_id}")
+        logger.info(f"✅ تم إرسال إشعار العضو الجديد: {user.id}")
     except Exception as e:
         logger.error(f"❌ فشل إرسال إشعار العضو الجديد: {e}")
 
