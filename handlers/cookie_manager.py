@@ -32,6 +32,7 @@ TEST_URLS = {
         'https://m.facebook.com/me',
         'https://www.facebook.com/settings',
     ],
+    'threads': 'https://www.threads.net/',
     'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173',
     'pinterest': 'https://www.pinterest.com/',
     'twitter': 'https://twitter.com/home',
@@ -46,6 +47,7 @@ TEST_URLS = {
 PLATFORM_PATTERNS = {
     'facebook': ['facebook.com', 'fb.watch', 'fb.com'],
     'instagram': ['instagram.com'],
+    'threads': ['threads.net', 'threads.com'],
     'tiktok': ['tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'],
     'pinterest': ['pinterest.com', 'pin.it'],
     'twitter': ['twitter.com', 'x.com', 't.co'],
@@ -60,6 +62,7 @@ PLATFORM_PATTERNS = {
 PLATFORM_COOKIE_LINKS = {
     'facebook': 'facebook',
     'instagram': 'instagram',
+    'threads': 'instagram',         # Threads uses Instagram cookies (owned by Meta)
     'tiktok': 'tiktok',
     'pinterest': 'pinterest',
     'twitter': 'twitter',
