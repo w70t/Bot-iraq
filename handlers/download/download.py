@@ -1970,6 +1970,25 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as log_error:
             logger.error(f"❌ فشل إرسال الخطأ للقناة: {log_error}")
 
+        # 💾 حفظ البلاغ في قاعدة البيانات (لوحة الأدمن)
+        try:
+            from database import create_error_report
+            # الحصول على username
+            username = user.username if hasattr(user, 'username') else None
+            if not username:
+                username = f"user_{user_id}"
+
+            create_error_report(
+                user_id=user_id,
+                username=username,
+                url=url,
+                error_type=f"Download Error - {platform.title()}",
+                error_message=error_msg[:500]  # حفظ أول 500 حرف
+            )
+            logger.info(f"✅ تم حفظ البلاغ في قاعدة البيانات للمستخدم {user_id}")
+        except Exception as db_error:
+            logger.error(f"❌ فشل حفظ البلاغ في قاعدة البيانات: {db_error}")
+
         # ⭐ معالج خاص لأخطاء cookies database
         if 'could not find' in error_msg.lower() and 'cookies database' in error_msg.lower():
             platform = get_platform_from_url(url)
