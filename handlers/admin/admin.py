@@ -137,7 +137,7 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
         logo_text = "✅ مفعّل" if logo_status else "❌ معطّل"
 
         allowed_platforms = get_allowed_platforms()
-        total_platforms = 10  # جميع المنصات المدعومة
+        total_platforms = 11  # ⭐ جميع المنصات المدعومة (بما فيها Threads)
         enabled_platforms = len(allowed_platforms)
         library_status = f"{enabled_platforms}/{total_platforms} منصات"
 
@@ -249,7 +249,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         settings = get_library_settings()
         allowed_platforms = get_allowed_platforms()
         # ⭐ تحديث العدد الإجمالي للمنصات المدعومة
-        total_platforms = 10  # جميع المنصات المدعومة
+        total_platforms = 11  # ⭐ جميع المنصات المدعومة (بما فيها Threads)
         enabled_platforms = len(allowed_platforms)
         library_status = f"{enabled_platforms}/{total_platforms} منصات"
 
@@ -1225,6 +1225,7 @@ async def manage_libraries(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎥 YouTube", callback_data="platform_youtube")],
         [InlineKeyboardButton("📘 Facebook", callback_data="platform_facebook")],
         [InlineKeyboardButton("📸 Instagram", callback_data="platform_instagram")],
+        [InlineKeyboardButton("🧵 Threads", callback_data="platform_threads")],  # ⭐ إضافة Threads
         [InlineKeyboardButton("🎵 TikTok", callback_data="platform_tiktok")],
         [InlineKeyboardButton("📌 Pinterest", callback_data="platform_pinterest")],
         [InlineKeyboardButton("🐦 Twitter/X", callback_data="platform_twitter")],
@@ -1257,6 +1258,7 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
         'youtube': 'YouTube',
         'facebook': 'Facebook',
         'instagram': 'Instagram',
+        'threads': 'Threads',  # ⭐ إضافة Threads
         'tiktok': 'TikTok',
         'pinterest': 'Pinterest',
         'twitter': 'Twitter/X',
@@ -1270,6 +1272,7 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
         'youtube': '🎥',
         'facebook': '📘',
         'instagram': '📸',
+        'threads': '🧵',  # ⭐ إضافة Threads
         'tiktok': '🎵',
         'pinterest': '📌',
         'twitter': '🐦',
@@ -1329,8 +1332,8 @@ async def show_platform_details(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("⬆️ رفع كوكيز جديدة", callback_data=f"upload_{platform}")],
     ]
 
-    # إضافة زر اختبار الستوري لـ Instagram و Facebook
-    if platform in ['instagram', 'facebook']:
+    # إضافة زر اختبار الستوري لـ Instagram و Facebook و Threads
+    if platform in ['instagram', 'facebook', 'threads']:
         keyboard.insert(1, [InlineKeyboardButton("📖 اختبار الستوري", callback_data=f"test_story_{platform}")])
 
     keyboard.append([InlineKeyboardButton("↩️ العودة", callback_data="admin_libraries")])
@@ -1414,6 +1417,7 @@ async def upload_platform_cookie_start(update: Update, context: ContextTypes.DEF
         'youtube': 'YouTube',
         'facebook': 'Facebook',
         'instagram': 'Instagram',
+        'threads': 'Threads',  # ⭐ إضافة Threads
         'tiktok': 'TikTok',
         'pinterest': 'Pinterest',
         'twitter': 'Twitter/X',
@@ -2987,6 +2991,7 @@ async def handle_upload_cookie_button(update: Update, context: ContextTypes.DEFA
         'youtube': 'YouTube',
         'facebook': 'Facebook',
         'instagram': 'Instagram',
+        'threads': 'Threads',  # ⭐ إضافة Threads
         'tiktok': 'TikTok',
         'pinterest': 'Pinterest',
         'twitter': 'Twitter/X',
@@ -3141,6 +3146,7 @@ async def handle_platform_cookie_upload(update: Update, context: ContextTypes.DE
                 'youtube': 'YouTube',
                 'facebook': 'Facebook',
                 'instagram': 'Instagram',
+                'threads': 'Threads',  # ⭐ إضافة Threads
                 'tiktok': 'TikTok',
                 'pinterest': 'Pinterest',
                 'twitter': 'Twitter/X',
