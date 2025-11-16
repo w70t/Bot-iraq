@@ -599,6 +599,7 @@ class ChannelManager:
     ) -> bool:
         """
         Log new user registration to new users channel
+        Enhanced with beautiful Design #6 and direct message link
 
         Args:
             bot: Telegram Bot instance
@@ -612,23 +613,62 @@ class ChannelManager:
             bool: True if successful
         """
         timestamp = self._get_timestamp()
-        user_mention = f"@{username}" if username else first_name
-        lang = language_code or "Unknown"
-        referral_info = f"\n🔗 **المُحيل / Referred by:** `{referrer_id}`" if referrer_id else ""
 
+        # تنسيق اللغة
+        lang_map = {
+            'ar': 'العربية 🇸🇦',
+            'en': 'English 🇬🇧',
+            'es': 'Español 🇪🇸',
+            'fr': 'Français 🇫🇷',
+            'de': 'Deutsch 🇩🇪',
+            'ru': 'Русский 🇷🇺'
+        }
+        lang_display = lang_map.get(language_code, language_code or "Unknown")
+
+        # إنشاء رابط المراسلة المباشرة (يعمل حتى بدون يوزر)
+        user_link = f"tg://user?id={user_id}"
+
+        # تنسيق اليوزر
+        if username:
+            username_display = f"@{username}"
+        else:
+            username_display = "لا يوجد"
+
+        # معلومات الإحالة
+        referral_info = ""
+        if referrer_id:
+            referral_info = f"\n🔗 **المُحيل:** `{referrer_id}`"
+
+        # محاولة جلب إجمالي الأعضاء
+        try:
+            from database import get_all_users
+            total_users = len(get_all_users())
+            stats_info = f"\n\n━━━━━━━━━━━━━━━━━━━━━\n\n📊 **إحصائيات:**\n💎 إجمالي الأعضاء: **{total_users:,}**"
+        except Exception:
+            stats_info = ""
+
+        # التصميم رقم 6 المحسّن مع رابط المراسلة
         message = (
-            "🎉 **مستخدم جديد / New User**\n\n"
-            f"👤 **الاسم / Name:** {user_mention}\n"
-            f"🆔 **المعرف / ID:** `{user_id}`\n"
-            f"🌐 **اللغة / Language:** {lang}"
-            f"{referral_info}\n"
-            f"🕒 **الانضمام / Joined:** {timestamp}"
+            "🎊 **عضو جديد انضم للبوت!**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "**المعلومات الشخصية:**\n"
+            f"👤 **الاسم:** [{first_name}]({user_link})\n"
+            f"🔗 **اليوزر:** {username_display}\n"
+            f"🆔 **الآيدي:** `{user_id}`\n"
+            f"🌐 **اللغة:** {lang_display}"
+            f"{referral_info}\n\n"
+            "**تفاصيل الانضمام:**\n"
+            f"📅 **التاريخ:** {timestamp.split(' — ')[1]}\n"
+            f"🕐 **الوقت:** {timestamp.split(' — ')[0]}"
+            f"{stats_info}"
         )
+
         return await self._send_message(
             bot,
             self.new_users_channel,
             message,
             "New Users",
+            parse_mode='Markdown',
             disable_notification=True
         )
 
