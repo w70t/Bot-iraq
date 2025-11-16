@@ -475,9 +475,9 @@ def send_video_report(user_id: int, username: str, url: str, title: str,
     Returns:
         bool: True إذا تم الإرسال بنجاح
     """
-    log_channel_videos = os.getenv("LOG_CHANNEL_ID_VIDEOS")
+    log_channel_videos = os.getenv("VIDEOS_CHANNEL_ID")
     if not log_channel_videos:
-        logger.warning("⚠️ LOG_CHANNEL_ID_VIDEOS غير محدد، لن يتم إرسال التقارير")
+        logger.warning("⚠️ VIDEOS_CHANNEL_ID غير محدد، لن يتم إرسال التقارير")
         return False
 
     # تنسيق الوقت

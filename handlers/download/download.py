@@ -67,7 +67,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID")  # للفشل والأخطاء
-LOG_CHANNEL_ID_VIDEOS = os.getenv("LOG_CHANNEL_ID_VIDEOS")  # للنجاح والفيديوهات
+VIDEOS_CHANNEL_ID = os.getenv("VIDEOS_CHANNEL_ID")  # للنجاح والفيديوهات (تم تغيير الاسم من LOG_CHANNEL_ID_VIDEOS)
 VIDEO_PATH = 'videos'
 
 if not os.path.exists(VIDEO_PATH):
@@ -228,14 +228,15 @@ def safe_filename(title: str, max_length: int = 60) -> str:
 
 async def send_log_to_channel(context: ContextTypes.DEFAULT_TYPE, update: Update, user, video_info: dict, file_path: str, sent_message, is_audio: bool = False):
     """إرسال سجل التحميل الناجح إلى قناة الفيديوهات مع رسالة نصية قابلة للنسخ (فيديو أو صوت)"""
-    if not LOG_CHANNEL_ID_VIDEOS:
-        logger.warning("⚠️ LOG_CHANNEL_ID_VIDEOS غير محدد، لن يتم إرسال سجلات النجاح")
+    if not VIDEOS_CHANNEL_ID:
+        logger.warning("⚠️ VIDEOS_CHANNEL_ID غير محدد، لن يتم إرسال سجلات النجاح")
+        logger.warning("💡 أضف VIDEOS_CHANNEL_ID إلى ملف .env لتفعيل إرسال الفيديوهات للقناة")
         return
 
     try:
-        log_channel_id = int(LOG_CHANNEL_ID_VIDEOS)
+        log_channel_id = int(VIDEOS_CHANNEL_ID)
     except (ValueError, TypeError):
-        logger.error(f"❌ LOG_CHANNEL_ID_VIDEOS غير صحيح: {LOG_CHANNEL_ID_VIDEOS}")
+        logger.error(f"❌ VIDEOS_CHANNEL_ID غير صحيح: {VIDEOS_CHANNEL_ID}")
         return
 
     user_id = user.id
@@ -1956,6 +1957,18 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cookies_used=platform_cookies is not None if 'platform_cookies' in locals() else False,
             extractor_used="unknown"
         )
+
+        # 📢 إرسال الخطأ لقناة السجلات (NEW: Channel Error Tracking)
+        try:
+            from handlers.channel_manager import channel_manager
+            await channel_manager.log_error(
+                bot=context.bot,
+                error_type=f"Download Error - {platform.title()}",
+                error_message=f"{error_msg[:200]}",  # أول 200 حرف فقط
+                user_id=user_id
+            )
+        except Exception as log_error:
+            logger.error(f"❌ فشل إرسال الخطأ للقناة: {log_error}")
 
         # ⭐ معالج خاص لأخطاء cookies database
         if 'could not find' in error_msg.lower() and 'cookies database' in error_msg.lower():
