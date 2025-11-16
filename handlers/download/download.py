@@ -760,7 +760,40 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
             }
         })
         logger.info("🎬 Pinterest: استخدام ffmpeg لتحميل HLS")
-    
+
+    # ⭐ إعدادات خاصة لـ Reddit - حل مشاكل Conflicting Range
+    elif is_reddit:
+        ydl_opts.update({
+            # استخدام ffmpeg لتحميل HLS/DASH بدلاً من native downloader
+            'external_downloader': 'ffmpeg',
+            'external_downloader_args': {
+                'ffmpeg_i': [
+                    '-hide_banner',
+                    '-loglevel', 'error'
+                ]
+            },
+            # تقليل concurrent downloads لتجنب مشاكل fragments
+            'concurrent_fragment_downloads': 1,
+            # زيادة المحاولات
+            'retries': 30,
+            'fragment_retries': 30,
+            # تقليل حجم buffer
+            'http_chunk_size': 1048576,  # 1MB بدلاً من 10MB
+            'buffersize': 1024 * 128,  # 128KB
+            # إضافة sleep بين fragments لتجنب rate limiting
+            'sleep_interval': 0,
+            'max_sleep_interval': 1,
+            # تجاهل fragments غير متاحة
+            'skip_unavailable_fragments': True,
+            # User-Agent مهم لـ Reddit
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+        })
+        logger.info("🔴 Reddit: استخدام ffmpeg لتحميل HLS/DASH")
+
     # إعدادات خاصة لـ Facebook
     elif is_facebook:
         # فحص إذا كان story
@@ -2124,7 +2157,26 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ⭐ معالج خاص لأخطاء Reddit
         if 'reddit' in error_msg.lower() or 'reddit.com' in url.lower() or 'redd.it' in url.lower():
             logger.error(f"❌ [Reddit] خطأ في التحميل: {error_msg[:200]}")
-            if 'no video formats found' in error_msg.lower() or 'no media' in error_msg.lower():
+            if 'conflicting range' in error_msg.lower() or 'downloaded file is empty' in error_msg.lower():
+                await processing_message.edit_text(
+                    "❌ **فشل تحميل الفيديو من Reddit!**\n\n"
+                    "🔴 **السبب:** مشكلة تقنية في خوادم Reddit\n\n"
+                    "💡 **الحلول:**\n\n"
+                    "1️⃣ **حاول مرة أخرى:**\n"
+                    "   • أرسل الرابط مرة أخرى بعد ثواني\n"
+                    "   • Reddit يعاني أحياناً من مشاكل مؤقتة\n\n"
+                    "2️⃣ **جرب جودة أخرى:**\n"
+                    "   • اختر 'متوسطة' بدلاً من 'عالية'\n"
+                    "   • بعض الفيديوهات تعمل بجودة أقل\n\n"
+                    "3️⃣ **استخدم رابط مباشر:**\n"
+                    "   • افتح المنشور في المتصفح\n"
+                    "   • انسخ رابط الفيديو مباشرة (v.redd.it)\n\n"
+                    "⚠️ **ملاحظة:** Reddit يغيّر طريقة عرض الفيديوهات باستمرار،\n"
+                    "بعض الفيديوهات قد لا تكون قابلة للتحميل حالياً",
+                    parse_mode='Markdown'
+                )
+                return
+            elif 'no video formats found' in error_msg.lower() or 'no media' in error_msg.lower():
                 await processing_message.edit_text(
                     "❌ **فشل تحميل المحتوى من Reddit!**\n\n"
                     "🔴 **السبب:** هذا المنشور لا يحتوي على فيديو\n\n"
