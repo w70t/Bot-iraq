@@ -16,6 +16,16 @@ from yt_dlp.utils import DownloadError
 import logging
 import httpx
 
+# تحميل Threads extractor plugin
+try:
+    from yt_dlp_plugins.extractor.threads import ThreadsIE, ThreadsIOSIE
+    # تسجيل الـ extractors مع yt-dlp
+    yt_dlp.extractor._extractors['ThreadsIE'] = ThreadsIE
+    yt_dlp.extractor._extractors['ThreadsIOSIE'] = ThreadsIOSIE
+    logging.info("✅ تم تحميل Threads extractor plugin بنجاح")
+except Exception as e:
+    logging.warning(f"⚠️ فشل تحميل Threads plugin: {e}")
+
 # ThreadPoolExecutor for async subprocess execution
 # Performance optimization: increased from 5 to 20 workers for faster FFmpeg processing
 executor = ThreadPoolExecutor(max_workers=20)
@@ -156,7 +166,7 @@ async def track_limit_rejection(context: ContextTypes.DEFAULT_TYPE, user_id: int
 def get_platform_from_url(url: str) -> str:
     """تحديد المنصة من رابط الفيديو - يدعم جميع المنصات الرئيسية"""
     url_lower = url.lower()
-    
+
     # المنصات الأساسية
     if 'youtube.com' in url_lower or 'youtu.be' in url_lower:
         return 'youtube'
@@ -166,6 +176,8 @@ def get_platform_from_url(url: str) -> str:
         return 'instagram'
     elif 'tiktok.com' in url_lower or 'vm.tiktok.com' in url_lower or 'vt.tiktok.com' in url_lower:
         return 'tiktok'
+    elif 'threads.net' in url_lower or 'threads.com' in url_lower:
+        return 'threads'
     elif 'pinterest.com' in url_lower or 'pin.it' in url_lower:
         return 'pinterest'
     elif 'twitter.com' in url_lower or 'x.com' in url_lower:
@@ -490,6 +502,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     is_facebook = 'facebook.com' in url or 'fb.watch' in url or 'fb.com' in url
     is_instagram = 'instagram.com' in url
     is_tiktok = 'tiktok.com' in url or 'vm.tiktok.com' in url or 'vt.tiktok.com' in url
+    is_threads = 'threads.net' in url or 'threads.com' in url
     is_pinterest = 'pinterest.com' in url or 'pin.it' in url
     is_reddit = 'reddit.com' in url
     is_twitter = 'twitter.com' in url or 'x.com' in url
@@ -542,7 +555,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
     cookies_loaded = False
 
     # محاولة تحميل cookies للمنصات الاجتماعية مع دعم الربط (V5.1)
-    if is_tiktok or is_instagram or is_facebook or is_pinterest or is_reddit or is_twitter or is_vimeo or is_dailymotion or is_twitch:
+    if is_tiktok or is_instagram or is_facebook or is_threads or is_pinterest or is_reddit or is_twitter or is_vimeo or is_dailymotion or is_twitch:
         # 1️⃣ Try encrypted cookies first (V5.1 with Platform Linking)
         try:
             from handlers.cookie_manager import cookie_manager, PLATFORM_COOKIE_LINKS
@@ -555,6 +568,8 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 platform = 'facebook'
             elif is_instagram:
                 platform = 'instagram'
+            elif is_threads:
+                platform = 'threads'  # Threads uses Instagram cookies (Meta)
             elif is_pinterest:
                 platform = 'pinterest'  # Links to Instagram
             elif is_reddit:
