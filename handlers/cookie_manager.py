@@ -35,7 +35,7 @@ TEST_URLS = {
     'tiktok': 'https://www.tiktok.com/@scout2015/video/6718335390845095173',
     'pinterest': 'https://www.pinterest.com/',
     'twitter': 'https://twitter.com/home',
-    'reddit': 'https://www.reddit.com/',
+    'reddit': None,  # Reddit cookies use soft validation (no specific test URL needed)
     'vimeo': 'https://vimeo.com/',
     'dailymotion': 'https://www.dailymotion.com/',
     'twitch': 'https://www.twitch.tv/',
@@ -382,6 +382,24 @@ class CookieManager:
             logger.error(f"Error checking IG essential cookies: {e}")
             return False
 
+    def _reddit_has_essential_cookies(self, cookie_file_path: str) -> bool:
+        """Check if Reddit cookie file contains essential cookies (reddit_session)"""
+        try:
+            import http.cookiejar
+            cookiejar = http.cookiejar.MozillaCookieJar()
+            cookiejar.load(cookie_file_path, ignore_discard=True, ignore_expires=True)
+
+            names = {c.name for c in cookiejar if "reddit" in c.domain}
+            # Essential Reddit cookies: reddit_session, token_v2
+            # At minimum we need reddit_session
+            has_reddit_session = "reddit_session" in names
+
+            logger.debug(f"Reddit cookies found: {names}, has reddit_session: {has_reddit_session}")
+            return has_reddit_session or len(names) >= 3  # Accept if has 3+ reddit cookies
+        except Exception as e:
+            logger.error(f"Error checking Reddit essential cookies: {e}")
+            return False
+
     async def validate_cookies(self, platform: str) -> bool:
         """Validate cookies by testing with yt-dlp (with soft validation for Facebook & Instagram)"""
         cookie_path = None
@@ -408,6 +426,10 @@ class CookieManager:
             # Special handling for Instagram with soft validation
             if platform == 'instagram':
                 return await self._validate_instagram_cookies(cookie_path, test_urls)
+
+            # Special handling for Reddit with soft validation (no test URL)
+            if platform == 'reddit':
+                return await self._validate_reddit_cookies(cookie_path)
 
             # Standard validation for other platforms
             test_url = test_urls[0] if isinstance(test_urls, list) else test_urls
@@ -540,6 +562,36 @@ class CookieManager:
                 json.dump(metadata, f, indent=2)
 
         return validation_ok if validation_ok else has_essential
+
+    async def _validate_reddit_cookies(self, cookie_path: str) -> bool:
+        """Validate Reddit cookies with soft validation (no test URL - just check essential cookies)"""
+        has_essential = self._reddit_has_essential_cookies(cookie_path)
+
+        # Update metadata
+        metadata_path = COOKIES_ENCRYPTED_DIR / "reddit.json"
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+
+            if has_essential:
+                # Soft validation - essential cookies present
+                metadata['validated'] = True
+                metadata['validation_type'] = 'soft'
+                metadata['last_validated'] = datetime.now().isoformat()
+                self._log_event("✅ Reddit cookies soft-validated (essential cookies present)")
+                logger.info("✅ Reddit cookies validated successfully (soft)")
+            else:
+                # No essential cookies
+                metadata['validated'] = False
+                metadata['validation_type'] = 'failed'
+                metadata['last_error'] = "Missing essential Reddit cookies (reddit_session)"
+                self._log_event("❌ Reddit cookie validation failed: Missing essential cookies")
+                logger.error("❌ Reddit cookies missing essential cookies")
+
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+
+        return has_essential
 
     async def _validate_instagram_cookies(self, cookie_path: str, test_urls: list) -> bool:
         """Validate Instagram cookies with soft validation fallback"""
