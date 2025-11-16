@@ -672,21 +672,31 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
 
         # 2️⃣ Try browser cookies if encrypted cookies not available (silent fallback)
         if not cookies_loaded:
-            # محاولة Chrome (بشكل صامت)
+            # محاولة Chrome (بشكل صامت مع اختبار فعلي)
             try:
-                ydl_opts['cookiesfrombrowser'] = ('chrome',)
-                cookies_loaded = True
-                logger.info("✅ Using cookies from Chrome browser")
-            except:
+                from yt_dlp.cookies import extract_cookies_from_browser
+                # اختبار استخراج cookies من Chrome فعلياً
+                test_cookies = extract_cookies_from_browser('chrome')
+                if test_cookies:
+                    ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                    cookies_loaded = True
+                    logger.info("✅ Using cookies from Chrome browser")
+            except Exception as e:
+                logger.debug(f"Chrome browser cookies not available: {e}")
                 pass  # تجاهل أخطاء Chrome بالكامل
 
             # محاولة Firefox إذا فشل Chrome
             if not cookies_loaded:
                 try:
-                    ydl_opts['cookiesfrombrowser'] = ('firefox',)
-                    cookies_loaded = True
-                    logger.info("✅ Using cookies from Firefox browser")
-                except:
+                    from yt_dlp.cookies import extract_cookies_from_browser
+                    # اختبار استخراج cookies من Firefox فعلياً
+                    test_cookies = extract_cookies_from_browser('firefox')
+                    if test_cookies:
+                        ydl_opts['cookiesfrombrowser'] = ('firefox',)
+                        cookies_loaded = True
+                        logger.info("✅ Using cookies from Firefox browser")
+                except Exception as e:
+                    logger.debug(f"Firefox browser cookies not available: {e}")
                     pass  # تجاهل أخطاء Firefox بالكامل
 
         # 3️⃣ محاولة تحميل ملفات cookies.txt خاصة بكل منصة (fallback)
@@ -1996,6 +2006,33 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cookies_used=platform_cookies is not None if 'platform_cookies' in locals() else False,
             extractor_used="unknown"
         )
+
+        # ⭐ معالج خاص لأخطاء cookies database
+        if 'could not find' in error_msg.lower() and 'cookies database' in error_msg.lower():
+            platform = get_platform_from_url(url)
+            platform_name = {
+                'tiktok': 'TikTok',
+                'instagram': 'Instagram',
+                'facebook': 'Facebook',
+                'twitter': 'Twitter/X',
+                'pinterest': 'Pinterest'
+            }.get(platform, platform.title())
+
+            await processing_message.edit_text(
+                f"❌ **فشل تحميل الفيديو من {platform_name}!**\n\n"
+                f"🔐 **السبب:** لا يمكن العثور على cookies من المتصفح\n\n"
+                f"💡 **الحل:**\n\n"
+                f"1️⃣ **ارفع ملف cookies يدوياً:**\n"
+                f"   • سجل دخول {platform_name} في المتصفح\n"
+                f"   • استخدم إضافة 'Get cookies.txt LOCALLY'\n"
+                f"   • احفظ الملف وارفعه للبوت\n\n"
+                f"2️⃣ **رفع الكوكيز للبوت:**\n"
+                f"   /admin → إدارة الكوكيز → {platform_name}\n\n"
+                f"📝 **ملاحظة:** البوت يعمل على خادم بدون متصفح،\n"
+                f"لذلك يحتاج ملف cookies يدوي للمنصات المحمية.",
+                parse_mode='Markdown'
+            )
+            return
 
         # ⭐ معالج خاص لأخطاء TikTok
         if 'tiktok' in error_msg.lower() or 'tiktok' in url.lower():
