@@ -57,9 +57,14 @@ from core.utils import (
     setup_daily_report_job,
 
     # Cookie Management
+    check_cookies_daily,
     check_cookies_weekly,
     backup_cookies_weekly,
     setup_cookie_check_job,
+
+    # Error Tracking & Reports
+    send_error_logs_to_admin,
+    setup_error_tracking_job,
 
     # Cleanup
     cleanup_temp_files,
@@ -128,9 +133,14 @@ __all__ = [
     'setup_daily_report_job',
 
     # Cookie Management
+    'check_cookies_daily',
     'check_cookies_weekly',
     'backup_cookies_weekly',
     'setup_cookie_check_job',
+
+    # Error Tracking & Reports
+    'send_error_logs_to_admin',
+    'setup_error_tracking_job',
 
     # Cleanup
     'cleanup_temp_files',

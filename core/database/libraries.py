@@ -21,6 +21,7 @@ def init_library_settings():
                 'youtube': True,
                 'facebook': True,
                 'instagram': True,
+                'threads': True,  # ⭐ إضافة منصة Threads
                 'tiktok': True,
                 'pinterest': True,
                 'twitter': True,
@@ -103,7 +104,7 @@ def toggle_platform(platform: str, enabled: bool):
     try:
         # ⭐ قائمة موسعة للمنصات المدعومة
         supported_platforms = [
-            'youtube', 'facebook', 'instagram', 'tiktok',
+            'youtube', 'facebook', 'instagram', 'threads', 'tiktok',
             'pinterest', 'twitter', 'reddit', 'vimeo',
             'dailymotion', 'twitch'
         ]
@@ -143,7 +144,7 @@ def get_allowed_platforms() -> list:
         if not settings:
             # ⭐ إرجاع جميع المنصات المدعومة افتراضياً
             return [
-                'youtube', 'facebook', 'instagram', 'tiktok',
+                'youtube', 'facebook', 'instagram', 'threads', 'tiktok',
                 'pinterest', 'twitter', 'reddit', 'vimeo',
                 'dailymotion', 'twitch'
             ]
@@ -155,7 +156,7 @@ def get_allowed_platforms() -> list:
         logger.error(f"❌ فشل جلب المنصات المسموحة: {e}")
         # في حالة الخطأ، إرجاع جميع المنصات
         return [
-            'youtube', 'facebook', 'instagram', 'tiktok',
+            'youtube', 'facebook', 'instagram', 'threads', 'tiktok',
             'pinterest', 'twitter', 'reddit', 'vimeo',
             'dailymotion', 'twitch'
         ]
