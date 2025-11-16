@@ -2353,7 +2353,9 @@ async def show_error_reports_panel(update: Update, context: ContextTypes.DEFAULT
         message_text = "✅ **لا توجد بلاغات معلقة**\n\nجميع البلاغات تمت معالجتها."
         keyboard = [[InlineKeyboardButton("🔙 العودة", callback_data="admin_back")]]
     else:
+        # التصميم #5 - بطاقات مصغرة
         message_text = f"🧾 **بلاغات المستخدمين المعلقة** ({len(pending_reports)})\n\n"
+        message_text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
 
         keyboard = []
         for i, report in enumerate(pending_reports[:10], 1):  # أول 10 فقط
@@ -2362,17 +2364,26 @@ async def show_error_reports_panel(update: Update, context: ContextTypes.DEFAULT
             error_type = report.get('error_type', 'خطأ')
             created_at = report.get('created_at')
 
+            # تنسيق التاريخ والوقت
             if created_at:
-                created_str = created_at.strftime('%m/%d %H:%M')
+                date_str = created_at.strftime('%d/%m/%Y')
+                time_str = created_at.strftime('%H:%M')
             else:
-                created_str = 'N/A'
+                date_str = 'N/A'
+                time_str = 'N/A'
 
-            # إزالة أحرف خاصة من اليوزر والنوع لتجنب مشاكل Markdown
-            # استخدام backticks للأمان
+            # إزالة أحرف خاصة من اليوزر لتجنب مشاكل Markdown
             username_safe = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
-            error_type_safe = error_type.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
 
-            message_text += f"{i}️⃣ `{username_safe}` — {error_type_safe} ({created_str})\n"
+            # استخراج اسم المنصة من نوع الخطأ (Download Error - Threads -> Threads)
+            platform = error_type.split(' - ')[-1] if ' - ' in error_type else error_type
+
+            # بطاقة البلاغ
+            message_text += f"📋 **بلاغ #{i}**\n"
+            message_text += f"🔴 {platform} Download Error\n"
+            message_text += f"👤 `{username_safe}`\n"
+            message_text += f"📅 {date_str} • 🕐 {time_str}\n\n"
+            message_text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
 
             # زر لكل بلاغ
             report_id = str(report['_id'])
@@ -2384,7 +2395,10 @@ async def show_error_reports_panel(update: Update, context: ContextTypes.DEFAULT
             ])
 
         if len(pending_reports) > 10:
-            message_text += f"\n... و {len(pending_reports) - 10} بلاغات أخرى"
+            message_text += f"... و {len(pending_reports) - 10} بلاغات أخرى\n\n"
+            message_text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        message_text += "💡 اضغط \"حل بلاغ\" لعرض التفاصيل"
 
         keyboard.append([InlineKeyboardButton("🔙 العودة", callback_data="admin_back")])
 
