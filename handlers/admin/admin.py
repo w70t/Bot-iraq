@@ -2367,7 +2367,12 @@ async def show_error_reports_panel(update: Update, context: ContextTypes.DEFAULT
             else:
                 created_str = 'N/A'
 
-            message_text += f"{i}️⃣ @{username} — {error_type} ({created_str})\n"
+            # إزالة أحرف خاصة من اليوزر والنوع لتجنب مشاكل Markdown
+            # استخدام backticks للأمان
+            username_safe = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+            error_type_safe = error_type.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace('`', '\\`')
+
+            message_text += f"{i}️⃣ `{username_safe}` — {error_type_safe} ({created_str})\n"
 
             # زر لكل بلاغ
             report_id = str(report['_id'])
@@ -2421,8 +2426,10 @@ async def handle_resolve_report(update: Update, context: ContextTypes.DEFAULT_TY
     user_link = f"tg://user?id={user_id}"
 
     # تنسيق اليوزر مع رابط قابل للنقر
+    # Escape أحرف Markdown الخاصة في اليوزرنيم
     if username and username != 'مجهول':
-        user_display = f"[{username}]({user_link})"
+        username_safe = username.replace('_', '\\_').replace('*', '\\*').replace('[', '\\[').replace(']', '\\]').replace('(', '\\(').replace(')', '\\)')
+        user_display = f"[{username_safe}]({user_link})"
     else:
         user_display = f"[ID: {user_id}]({user_link})"
 
