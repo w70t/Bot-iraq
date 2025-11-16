@@ -7,7 +7,8 @@ This module manages all bot channels:
 2. Videos Channel - For downloaded videos backup
 3. New Users Channel - For new user registrations
 4. Statistics Channel - For daily statistics
-5. Updates Channel - For announcements and updates
+5. Admin Channel - For automatic notifications (stop, start, maintenance)
+6. Updates Channel - For manual announcements (@iraq_7kmmy - no automatic messages)
 """
 
 import os
@@ -29,6 +30,7 @@ class ChannelManager:
         self.videos_channel = os.getenv("VIDEOS_CHANNEL_ID")
         self.new_users_channel = os.getenv("NEW_USERS_CHANNEL_ID")
         self.stats_channel = os.getenv("STATS_CHANNEL_ID")
+        self.admin_channel = os.getenv("ADMIN_CHANNEL_ID")
         self.updates_channel = os.getenv("UPDATES_CHANNEL_USERNAME", "@iraq_7kmmy")
 
         # Log which channels are configured
@@ -41,7 +43,8 @@ class ChannelManager:
             "Videos": "✅" if self.videos_channel else "❌",
             "New Users": "✅" if self.new_users_channel else "❌",
             "Statistics": "✅" if self.stats_channel else "❌",
-            "Updates": "✅" if self.updates_channel else "❌"
+            "Admin": "✅" if self.admin_channel else "❌",
+            "Updates (Manual)": "✅" if self.updates_channel else "❌"
         }
         logger.info(f"Channel Manager Configuration: {channels_status}")
 
@@ -457,7 +460,120 @@ class ChannelManager:
         return await self._send_message(bot, self.stats_channel, message, "Statistics")
 
     # ═══════════════════════════════════════════════════════════
+    # ADMIN CHANNEL METHODS
+    # القناة الإدارية - للإشعارات التلقائية فقط
+    # ═══════════════════════════════════════════════════════════
+
+    async def notify_bot_startup(self, bot: Bot) -> bool:
+        """
+        Send bot startup notification to admin channel
+
+        Args:
+            bot: Telegram Bot instance
+
+        Returns:
+            bool: True if successful
+        """
+        timestamp = self._get_timestamp()
+        message = (
+            "🚀 **تشغيل البوت / Bot Started**\n\n"
+            "✅ **جميع الأنظمة تعمل / All Systems Operational**\n\n"
+            "🎯 **المميزات النشطة / Active Features:**\n"
+            "• تحميل فيديوهات من +1000 موقع\n"
+            "• نظام اختيار فيديوهات محددة من القوائم\n"
+            "• تتبع دقيق للتقدم (1%)\n"
+            "• تفاعلات تلقائية 👀\n"
+            "• نظام الإحالة والمكافآت\n"
+            "• نظام قنوات متعددة 📢\n\n"
+            f"🕒 **الوقت / Time:** {timestamp}\n"
+            "⚡ **الحالة / Status:** جاهز للاستخدام"
+        )
+        return await self._send_message(bot, self.admin_channel, message, "Admin")
+
+    async def notify_bot_shutdown(self, bot: Bot, reason: str = "Normal shutdown") -> bool:
+        """
+        Send bot shutdown notification to admin channel
+
+        Args:
+            bot: Telegram Bot instance
+            reason: Shutdown reason
+
+        Returns:
+            bool: True if successful
+        """
+        timestamp = self._get_timestamp()
+        message = (
+            "⏹️ **توقف البوت / Bot Stopped**\n\n"
+            f"📝 **السبب / Reason:** {reason}\n"
+            f"🕒 **الوقت / Time:** {timestamp}\n\n"
+            "🔄 سيتم إعادة التشغيل قريباً..."
+        )
+        return await self._send_message(bot, self.admin_channel, message, "Admin")
+
+    async def notify_critical_error(
+        self,
+        bot: Bot,
+        error_type: str,
+        error_message: str
+    ) -> bool:
+        """
+        Send critical error notification to admin channel
+
+        Args:
+            bot: Telegram Bot instance
+            error_type: Type of error
+            error_message: Error message
+
+        Returns:
+            bool: True if successful
+        """
+        timestamp = self._get_timestamp()
+
+        # Truncate long error messages
+        if len(error_message) > 300:
+            error_message = error_message[:300] + "..."
+
+        message = (
+            "🚨 **خطأ حرج / Critical Error**\n\n"
+            f"🔴 **النوع / Type:** {error_type}\n"
+            f"📝 **التفاصيل / Details:**\n`{error_message}`\n\n"
+            f"🕒 **الوقت / Time:** {timestamp}\n"
+            "⚠️ **يتطلب انتباهك / Requires Attention**"
+        )
+        return await self._send_message(bot, self.admin_channel, message, "Admin")
+
+    async def notify_maintenance(
+        self,
+        bot: Bot,
+        start_time: str,
+        duration: str,
+        reason: str = "صيانة دورية / Routine maintenance"
+    ) -> bool:
+        """
+        Send maintenance notification to admin channel
+
+        Args:
+            bot: Telegram Bot instance
+            start_time: Maintenance start time
+            duration: Expected duration
+            reason: Maintenance reason
+
+        Returns:
+            bool: True if successful
+        """
+        message = (
+            "🔧 **صيانة مجدولة / Scheduled Maintenance**\n"
+            "═══════════════════════════════\n\n"
+            f"📅 **الوقت / Time:** {start_time}\n"
+            f"⏱️ **المدة / Duration:** {duration}\n"
+            f"📝 **السبب / Reason:** {reason}\n\n"
+            "⚠️ البوت قد يكون غير متاح مؤقتاً"
+        )
+        return await self._send_message(bot, self.admin_channel, message, "Admin")
+
+    # ═══════════════════════════════════════════════════════════
     # UPDATES CHANNEL METHODS
+    # قناة التحديثات - للإعلانات اليدوية فقط (لا رسائل تلقائية)
     # ═══════════════════════════════════════════════════════════
 
     async def announce_update(
@@ -469,6 +585,9 @@ class ChannelManager:
     ) -> bool:
         """
         Announce new update to updates channel
+        NOTE: This is for MANUAL announcements only
+        The bot will NOT automatically send to @iraq_7kmmy
+        Use this only when you want to manually announce something
 
         Args:
             bot: Telegram Bot instance
@@ -498,9 +617,12 @@ class ChannelManager:
             "🚀 التحديث مفعّل الآن!"
         )
 
-        return await self._send_message(bot, self.updates_channel, message, "Updates")
+        # This will NOT be called automatically
+        # Only use when you manually want to announce
+        logger.warning("⚠️ announce_update called - This sends to public @iraq_7kmmy channel!")
+        return await self._send_message(bot, self.updates_channel, message, "Updates (Manual)")
 
-    async def announce_maintenance(
+    async def announce_maintenance_public(
         self,
         bot: Bot,
         start_time: str,
@@ -508,7 +630,8 @@ class ChannelManager:
         reason: str = "صيانة دورية / Routine maintenance"
     ) -> bool:
         """
-        Announce scheduled maintenance
+        Announce scheduled maintenance to PUBLIC updates channel
+        NOTE: This is for MANUAL announcements only
 
         Args:
             bot: Telegram Bot instance
@@ -529,7 +652,8 @@ class ChannelManager:
             "⚠️ Bot may be temporarily unavailable"
         )
 
-        return await self._send_message(bot, self.updates_channel, message, "Updates")
+        logger.warning("⚠️ announce_maintenance_public called - This sends to public @iraq_7kmmy channel!")
+        return await self._send_message(bot, self.updates_channel, message, "Updates (Manual)")
 
 
 # Create global instance
