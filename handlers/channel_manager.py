@@ -423,7 +423,7 @@ class ChannelManager:
         user_id: Optional[int] = None
     ) -> bool:
         """
-        Log error to logs channel
+        Log error to logs channel with Design #3 (professional with details)
 
         Args:
             bot: Telegram Bot instance
@@ -434,21 +434,48 @@ class ChannelManager:
         Returns:
             bool: True if successful
         """
+        import re
+
         timestamp = self._get_timestamp()
 
-        # Truncate long error messages
-        if len(error_message) > 300:
-            error_message = error_message[:300] + "..."
+        # 1. إزالة رموز الألوان ANSI
+        # Remove ANSI color codes like [0;31m, [0m, etc.
+        clean_error = re.sub(r'\x1b\[[0-9;]*m', '', error_message)
+        clean_error = re.sub(r'\[0;[0-9]+m', '', clean_error)
+        clean_error = re.sub(r'\[0m', '', clean_error)
 
-        user_info = f"\n👤 **المستخدم / User ID:** `{user_id}`" if user_id else ""
+        # 2. اختصار الروابط الطويلة
+        # Shorten long URLs (keep first 60 chars + ... + last 20 chars)
+        def shorten_url(match):
+            url = match.group(0)
+            if len(url) > 100:
+                return url[:60] + "..." + url[-20:]
+            return url
 
+        url_pattern = r'https?://[^\s]+'
+        clean_error = re.sub(url_pattern, shorten_url, clean_error)
+
+        # 3. اختصار الرسالة إذا كانت طويلة جداً
+        if len(clean_error) > 400:
+            clean_error = clean_error[:400] + "..."
+
+        # 4. إنشاء رابط المستخدم القابل للنقر (مثل تنبيهات الأعضاء الجدد)
+        user_info = ""
+        if user_id:
+            user_link = f"tg://user?id={user_id}"
+            user_info = f"\n👤 **المستخدم:** [ID: {user_id}]({user_link})"
+
+        # 5. التصميم رقم 3 - احترافي مع التفاصيل
         message = (
-            "❌ **خطأ / Error Alert**\n\n"
-            f"🔴 **النوع / Type:** {error_type}\n"
-            f"📝 **التفاصيل / Details:**\n`{error_message}`"
-            f"{user_info}\n"
-            f"🕒 **الوقت / Time:** {timestamp}"
+            "⚠️ **تنبيه خطأ**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🔴 **نوع الخطأ:**\n{error_type}\n\n"
+            f"📋 **التفاصيل:**\n```\n{clean_error}\n```"
+            f"{user_info}\n\n"
+            f"🕐 **الوقت:** {timestamp.split(' — ')[0]}\n"
+            f"📅 **التاريخ:** {timestamp.split(' — ')[1]}"
         )
+
         return await self._send_message(bot, self.log_channel, message, "Logs")
 
     async def log_download(
