@@ -16,15 +16,8 @@ from yt_dlp.utils import DownloadError
 import logging
 import httpx
 
-# تحميل Threads extractor plugin
-try:
-    from yt_dlp_plugins.extractor.threads import ThreadsIE, ThreadsIOSIE
-    # تسجيل الـ extractors مع yt-dlp
-    yt_dlp.extractor._extractors['ThreadsIE'] = ThreadsIE
-    yt_dlp.extractor._extractors['ThreadsIOSIE'] = ThreadsIOSIE
-    logging.info("✅ تم تحميل Threads extractor plugin بنجاح")
-except Exception as e:
-    logging.warning(f"⚠️ فشل تحميل Threads plugin: {e}")
+# ملاحظة: yt-dlp يقوم بتحميل الـ plugins تلقائياً من مجلد yt_dlp_plugins
+# لا حاجة للتسجيل اليدوي للـ extractors
 
 # ThreadPoolExecutor for async subprocess execution
 # Performance optimization: increased from 5 to 20 workers for faster FFmpeg processing
