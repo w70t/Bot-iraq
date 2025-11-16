@@ -760,6 +760,17 @@ async def check_cookies_daily(context):
             pass
 
 
+# ⭐ Alias للتوافق مع الكود القديم
+async def check_cookies_weekly(context):
+    """
+    مهمة فحص الـ cookies أسبوعياً (للتوافق مع الكود القديم)
+
+    Note: هذه الدالة هي alias لـ check_cookies_daily للتوافق مع الكود القديم.
+    يُنصح باستخدام check_cookies_daily مباشرة في الكود الجديد.
+    """
+    await check_cookies_daily(context)
+
+
 async def backup_cookies_weekly(context):
     """
     مهمة النسخ الاحتياطي الأسبوعي للـ cookies
