@@ -83,9 +83,11 @@ class BotLock:
         try:
             # فتح/إنشاء ملف القفل
             self.lockfile = open(self.lockfile_path, 'w')
+            logging.debug(f"🔍 تم فتح ملف القفل: {self.lockfile_path}")
 
             # محاولة الحصول على قفل حصري (غير محظور)
             fcntl.flock(self.lockfile.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logging.debug(f"🔒 تم الحصول على القفل بنجاح")
 
             # كتابة PID للعملية الحالية
             self.lockfile.write(str(os.getpid()))
@@ -96,11 +98,32 @@ class BotLock:
 
             return True
 
-        except IOError:
+        except BlockingIOError as e:
             # القفل محجوز بالفعل - نسخة أخرى تعمل
+            logging.debug(f"🔒 القفل محجوز: {e}")
+            # محاولة قراءة PID من ملف القفل
+            try:
+                with open(self.lockfile_path, 'r') as f:
+                    pid = f.read().strip()
+                    logging.error(f"📌 PID للعملية الأخرى: {pid}")
+                    # التحقق إذا كانت العملية موجودة
+                    try:
+                        os.kill(int(pid), 0)  # لا يقتل، فقط يتحقق
+                        logging.error(f"✓ العملية {pid} ما زالت تعمل")
+                    except OSError:
+                        logging.error(f"⚠️ العملية {pid} غير موجودة - ملف قفل قديم!")
+                        logging.error(f"💡 حذف ملف القفل القديم: rm {self.lockfile_path}")
+            except Exception:
+                pass
+            return False
+        except IOError as e:
+            logging.error(f"❌ خطأ IO في القفل: {e}")
             return False
         except Exception as e:
             logging.error(f"❌ خطأ في آلية القفل: {e}")
+            logging.error(f"🔍 نوع الخطأ: {type(e).__name__}")
+            import traceback
+            logging.error(f"📋 Traceback:\n{traceback.format_exc()}")
             return False
 
     def release(self):
@@ -421,16 +444,69 @@ def main() -> None:
     """تشغيل البوت الرئيسي"""
     # ===== التحقق من عدم وجود نسخة أخرى من البوت =====
     bot_lock = BotLock()
+
+    # محاولة الحصول على القفل
     if not bot_lock.acquire():
-        logger.error("=" * 50)
-        logger.error("❌ فشل تشغيل البوت!")
-        logger.error("⚠️ هناك نسخة أخرى من البوت تعمل بالفعل")
-        logger.error("💡 الحل:")
-        logger.error("   1. أوقف النسخة الأخرى من البوت")
-        logger.error("   2. أو استخدم: ps aux | grep bot.py")
-        logger.error("   3. ثم: kill -9 <PID>")
-        logger.error("=" * 50)
-        sys.exit(1)
+        # محاولة تنظيف ملف قفل قديم
+        logger.warning("⚠️ فشل الحصول على القفل في المحاولة الأولى")
+        logger.info("🔍 التحقق من وجود ملف قفل قديم...")
+
+        lockfile_path = bot_lock.lockfile_path
+        if os.path.exists(lockfile_path):
+            try:
+                # قراءة PID من ملف القفل
+                with open(lockfile_path, 'r') as f:
+                    old_pid = f.read().strip()
+
+                # التحقق إذا كانت العملية موجودة
+                if old_pid.isdigit():
+                    try:
+                        os.kill(int(old_pid), 0)
+                        # العملية موجودة - فشل حقيقي
+                        logger.error("=" * 50)
+                        logger.error("❌ فشل تشغيل البوت!")
+                        logger.error(f"⚠️ هناك نسخة أخرى من البوت تعمل (PID: {old_pid})")
+                        logger.error("💡 الحل:")
+                        logger.error("   1. أوقف النسخة الأخرى من البوت")
+                        logger.error("   2. أو استخدم: ps aux | grep bot.py")
+                        logger.error(f"   3. ثم: kill -9 {old_pid}")
+                        logger.error("=" * 50)
+                        sys.exit(1)
+                    except OSError:
+                        # العملية غير موجودة - ملف قفل قديم
+                        logger.warning(f"⚠️ وُجد ملف قفل قديم (PID: {old_pid}) - العملية غير موجودة")
+                        logger.info("🧹 تنظيف ملف القفل القديم...")
+                        os.remove(lockfile_path)
+                        logger.info("✅ تم حذف ملف القفل القديم")
+
+                        # محاولة الحصول على القفل مرة أخرى
+                        logger.info("🔄 إعادة المحاولة...")
+                        if not bot_lock.acquire():
+                            logger.error("❌ فشل الحصول على القفل بعد التنظيف!")
+                            sys.exit(1)
+                        logger.info("✅ تم الحصول على القفل بعد التنظيف!")
+                else:
+                    logger.warning("⚠️ ملف قفل تالف - حذفه...")
+                    os.remove(lockfile_path)
+                    if not bot_lock.acquire():
+                        logger.error("❌ فشل الحصول على القفل بعد حذف الملف التالف!")
+                        sys.exit(1)
+            except Exception as e:
+                logger.error(f"❌ خطأ في معالجة ملف القفل: {e}")
+                logger.error("=" * 50)
+                logger.error("❌ فشل تشغيل البوت!")
+                logger.error("⚠️ هناك نسخة أخرى من البوت تعمل بالفعل")
+                logger.error("💡 الحل:")
+                logger.error("   1. أوقف النسخة الأخرى من البوت")
+                logger.error("   2. أو استخدم: ps aux | grep bot.py")
+                logger.error("   3. ثم: kill -9 <PID>")
+                logger.error(f"   4. أو احذف ملف القفل: rm {lockfile_path}")
+                logger.error("=" * 50)
+                sys.exit(1)
+        else:
+            # لا يوجد ملف قفل لكن فشل الحصول على القفل؟
+            logger.error("❌ خطأ غير متوقع: فشل الحصول على القفل بدون وجود ملف قفل!")
+            sys.exit(1)
 
     logger.info("=" * 50)
     logger.info("🔒 تم الحصول على القفل بنجاح - لا توجد نسخ أخرى")
