@@ -408,6 +408,28 @@ async def post_init(application: Application):
     await setup_bot_menu(application.bot)
     logger.info("✅ تم إعداد قائمة الأوامر بنجاح!")
 
+    # Test channel connectivity (NEW: Detailed channel testing)
+    logger.info("=" * 60)
+    logger.info("🔍 Testing channel connectivity...")
+    try:
+        from handlers.channel_manager import channel_manager
+        test_results = await channel_manager.test_all_channels(application.bot)
+
+        # تحليل النتائج
+        failed_channels = [name for name, status in test_results.items()
+                          if status not in ["success", "not_configured"]]
+
+        if failed_channels:
+            logger.warning(f"⚠️ Some channels have connectivity issues: {', '.join(failed_channels)}")
+            logger.warning(f"💡 Check the detailed logs above for troubleshooting steps")
+        else:
+            logger.info(f"✅ All configured channels are accessible!")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to test channels: {e}")
+
+    logger.info("=" * 60)
+
     # إرسال تقارير بدء التشغيل
     await send_startup_reports(application)
 
