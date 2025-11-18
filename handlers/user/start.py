@@ -65,14 +65,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"🎁 [START] كود إحالة تم اكتشافه: {referral_code} للمستخدم {user_id}")
 
         try:
-            # تمرير context.bot لإرسال الإشعارات
-            import asyncio
-
-            # إنشاء task لتسجيل الإحالة (async function)
-            referral_success = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: track_referral(referral_code, user_id, bot=context.bot)
-            )
+            # استدعاء track_referral مباشرة (async function)
+            referral_success = await track_referral(referral_code, user_id, bot=context.bot)
 
             if referral_success:
                 logger.info(f"✅ [START] تم تسجيل الإحالة بنجاح للمستخدم {user_id}")
