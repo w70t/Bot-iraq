@@ -229,3 +229,69 @@ def get_daily_download_limit_setting():
     except Exception as e:
         logger.error(f"❌ فشل جلب الحد اليومي: {e}")
         return 3
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Referral System Settings
+# ═══════════════════════════════════════════════════════════════
+
+def get_referral_settings():
+    """جلب إعدادات نظام الإحالة الحالية"""
+    try:
+        if settings_collection is None:
+            return None
+
+        settings = settings_collection.find_one({'_id': 'referral_settings'})
+
+        # إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+        if not settings:
+            default_settings = {
+                '_id': 'referral_settings',
+                'referral_enabled': True,  # مفعّل افتراضياً
+                'last_updated': datetime.now()
+            }
+            settings_collection.insert_one(default_settings)
+            logger.info("✅ تم إنشاء إعدادات نظام الإحالة الافتراضية")
+            return default_settings
+
+        return settings
+    except Exception as e:
+        logger.error(f"❌ فشل جلب إعدادات نظام الإحالة: {e}")
+        return None
+
+
+def set_referral_enabled(enabled: bool):
+    """تفعيل أو إيقاف نظام الإحالة"""
+    try:
+        if settings_collection is None:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'referral_settings'},
+            {
+                '$set': {
+                    'referral_enabled': enabled,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        status = "مفعّل" if enabled else "معطّل"
+        logger.info(f"✅ نظام الإحالة تم {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حالة نظام الإحالة: {e}")
+        return False
+
+
+def is_referral_enabled():
+    """التحقق من حالة نظام الإحالة"""
+    try:
+        settings = get_referral_settings()
+        if not settings:
+            return True  # الافتراضي: مفعّل
+        return settings.get('referral_enabled', True)
+    except Exception as e:
+        logger.error(f"❌ فشل التحقق من حالة نظام الإحالة: {e}")
+        return True
