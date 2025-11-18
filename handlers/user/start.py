@@ -3,6 +3,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 import logging
 import os
+import traceback
 from datetime import datetime
 
 from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
@@ -61,19 +62,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # معالجة الإحالة إذا كانت موجودة
     if referral_code:
-        from telegram.ext import ContextTypes
-        # جلب الـ bot من context (تمرير None لتجنب مشاكل async)
-        referral_success = track_referral(referral_code, user_id, bot=None)
-        if referral_success:
-            # إرسال إشعار يدوي للمستخدم الجديد
-            try:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text="🎉 تمت إضافة الإحالة بنجاح!\n✅ Referral successfully added!",
-                    parse_mode='Markdown'
-                )
-            except Exception as e:
-                print(f"Referral notification error: {e}")
+        logger.info(f"🎁 [START] كود إحالة تم اكتشافه: {referral_code} للمستخدم {user_id}")
+
+        try:
+            # تمرير context.bot لإرسال الإشعارات
+            import asyncio
+
+            # إنشاء task لتسجيل الإحالة (async function)
+            referral_success = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: track_referral(referral_code, user_id, bot=context.bot)
+            )
+
+            if referral_success:
+                logger.info(f"✅ [START] تم تسجيل الإحالة بنجاح للمستخدم {user_id}")
+            else:
+                logger.warning(f"⚠️ [START] فشل تسجيل الإحالة للمستخدم {user_id} بالكود {referral_code}")
+
+        except Exception as e:
+            logger.error(f"❌ [START] خطأ في معالجة الإحالة للمستخدم {user_id}: {type(e).__name__}: {str(e)}")
+            logger.error(f"📍 [START] Stack trace:\n{traceback.format_exc()}")
     
     # توليد كود إحالة للمستخدم الجديد
     generate_referral_code(user_id)
@@ -179,26 +187,28 @@ def create_main_keyboard(lang_code: str):
     if lang_code == "ar":
         keyboard = [
             ["📥 تحميل فيديو", "🎧 تحميل صوت"],
-            ["👤 حسابي", "❓ المساعدة"]
+            ["👤 حسابي", "🎁 الإحالات"],
+            ["❓ المساعدة"]
         ]
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
             keyboard.append(["⭐ الاشتراك VIP"])
 
         # زر الدعم دائماً موجود
-        keyboard.append(["🎁 دعم صاحب البوت"])
+        keyboard.append(["💝 دعم صاحب البوت"])
         keyboard.append(["🌐 تغيير اللغة"])
     else:
         keyboard = [
             ["📥 Download Video", "🎧 Download Audio"],
-            ["👤 My Account", "❓ Help"]
+            ["👤 My Account", "🎁 Referrals"],
+            ["❓ Help"]
         ]
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
             keyboard.append(["⭐ Subscribe VIP"])
 
         # زر الدعم دائماً موجود
-        keyboard.append(["🎁 Support the Creator"])
+        keyboard.append(["💝 Support the Creator"])
         keyboard.append(["🌐 Change Language"])
 
     return keyboard
