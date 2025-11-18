@@ -1,6 +1,6 @@
 import random
 from datetime import datetime
-from .base import users_collection
+from .base import users_collection, settings_collection
 from config.logger import get_logger
 
 # إنشاء logger instance
@@ -223,3 +223,73 @@ def get_no_logo_credits(user_id: int) -> int:
     except Exception as e:
         logger.error(f"❌ فشل جلب رصيد النقاط: {e}")
         return 0
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Global Referral Settings
+# ═══════════════════════════════════════════════════════════════
+
+def get_global_settings():
+    """جلب الإعدادات العامة للبوت"""
+    try:
+        if settings_collection is None:
+            return None
+
+        settings = settings_collection.find_one({'_id': 'global_settings'})
+
+        # إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
+        if not settings:
+            default_settings = {
+                '_id': 'global_settings',
+                'referral_enabled': True,  # نظام الإحالة مفعل افتراضياً
+                'last_updated': datetime.now()
+            }
+            settings_collection.update_one(
+                {'_id': 'global_settings'},
+                {'$setOnInsert': default_settings},
+                upsert=True
+            )
+            logger.info("✅ تم إنشاء إعدادات نظام الإحالة الافتراضية")
+            return settings_collection.find_one({'_id': 'global_settings'})
+
+        return settings
+    except Exception as e:
+        logger.error(f"❌ فشل جلب إعدادات نظام الإحالة: {e}")
+        return None
+
+
+def set_referral_enabled(enabled: bool):
+    """تفعيل أو إيقاف نظام الإحالة"""
+    try:
+        if settings_collection is None:
+            return False
+
+        settings_collection.update_one(
+            {'_id': 'global_settings'},
+            {
+                '$set': {
+                    'referral_enabled': enabled,
+                    'last_updated': datetime.now()
+                }
+            },
+            upsert=True
+        )
+
+        status = "مفعل" if enabled else "معطل"
+        logger.info(f"✅ نظام الإحالة تم {status}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ فشل تحديث حالة نظام الإحالة: {e}")
+        return False
+
+
+def is_referral_enabled():
+    """التحقق من حالة نظام الإحالة"""
+    try:
+        settings = get_global_settings()
+        if not settings:
+            return True  # الافتراضي: مفعل
+        return settings.get('referral_enabled', True)
+    except Exception as e:
+        logger.error(f"❌ فشل التحقق من حالة نظام الإحالة: {e}")
+        return True
