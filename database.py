@@ -126,5 +126,8 @@ __all__ = [
     'set_free_time_limit',
     'get_free_time_limit',
     'set_daily_download_limit',
-    'get_daily_download_limit_setting'
+    'get_daily_download_limit_setting',
+    'get_referral_settings',
+    'set_referral_enabled',
+    'is_referral_enabled'
 ]

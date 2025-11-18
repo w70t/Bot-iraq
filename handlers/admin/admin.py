@@ -258,12 +258,19 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sub_enabled = is_subscription_enabled()
         sub_status = "✅" if sub_enabled else "🚫"
 
+        # جلب حالة نظام الإحالة
+        logger.info(f"📋 [ADMIN_PANEL] Fetching referral system status")
+        from database import is_referral_enabled
+        referral_enabled = is_referral_enabled()
+        referral_status = "✅" if referral_enabled else "🚫"
+
         logger.info(f"📋 [ADMIN_PANEL] Building keyboard")
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
             [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
             [InlineKeyboardButton("⭐ ترقية عضو", callback_data="admin_upgrade")],
             [InlineKeyboardButton(f"💎 التحكم بالاشتراك ({sub_status})", callback_data="admin_vip_control")],
+            [InlineKeyboardButton(f"🎁 نظام الإحالة ({referral_status})", callback_data="admin_toggle_referral")],
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
@@ -2130,6 +2137,34 @@ async def handle_sub_toggle_notif(update: Update, context: ContextTypes.DEFAULT_
 
 
 # ═══════════════════════════════════════════════════════════════
+#  Referral System Control
+# ═══════════════════════════════════════════════════════════════
+
+async def handle_toggle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبديل حالة نظام الإحالة"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import is_referral_enabled, set_referral_enabled
+
+    # الحصول على الحالة الحالية
+    current_status = is_referral_enabled()
+    new_status = not current_status
+
+    # حفظ التغيير
+    success = set_referral_enabled(new_status)
+
+    if success:
+        status_text = "✅ مفعّل" if new_status else "❌ معطّل"
+        await query.answer(f"🎁 نظام الإحالة الآن: {status_text}", show_alert=True)
+    else:
+        await query.answer("❌ فشل تغيير حالة نظام الإحالة!", show_alert=True)
+
+    # العودة للوحة التحكم الرئيسية
+    return await admin_panel(update, context)
+
+
+# ═══════════════════════════════════════════════════════════════
 #  Audio Settings Panel
 # ═══════════════════════════════════════════════════════════════
 
@@ -3568,6 +3603,8 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(handle_sub_change_price, pattern='^sub_change_price$'),
             CallbackQueryHandler(handle_sub_set_price, pattern='^sub_price_'),
             CallbackQueryHandler(handle_sub_toggle_notif, pattern='^sub_toggle_notif$'),
+            # Referral System Control
+            CallbackQueryHandler(handle_toggle_referral, pattern='^admin_toggle_referral$'),
             # Mission 10: Download Logs
             CallbackQueryHandler(show_download_logs, pattern='^admin_download_logs$'),
             # Audio Settings

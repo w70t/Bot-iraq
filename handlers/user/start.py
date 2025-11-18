@@ -6,7 +6,7 @@ import os
 import traceback
 from datetime import datetime
 
-from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled
+from database import add_user, update_user_language, update_user_interaction, get_user_language, track_referral, generate_referral_code, is_subscription_enabled, is_referral_enabled
 from utils import get_message
 from handlers.channel_manager import channel_manager
 
@@ -174,16 +174,25 @@ def create_main_keyboard(lang_code: str):
     """
     إنشاء لوحة المفاتيح الرئيسية حسب اللغة
     مع التحكم في عرض زر VIP حسب حالة الاشتراك
+    وزر الإحالات حسب حالة نظام الإحالة
     """
-    # التحقق من حالة الاشتراك
+    # التحقق من حالة الاشتراك ونظام الإحالة
     sub_enabled = is_subscription_enabled()
+    referral_enabled = is_referral_enabled()
 
     if lang_code == "ar":
         keyboard = [
-            ["📥 تحميل فيديو", "🎧 تحميل صوت"],
-            ["👤 حسابي", "🎁 الإحالات"],
-            ["❓ المساعدة"]
+            ["📥 تحميل فيديو", "🎧 تحميل صوت"]
         ]
+
+        # إنشاء الصف الثاني ديناميكياً
+        second_row = ["👤 حسابي"]
+        if referral_enabled:
+            second_row.append("🎁 الإحالات")
+        keyboard.append(second_row)
+
+        keyboard.append(["❓ المساعدة"])
+
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
             keyboard.append(["⭐ الاشتراك VIP"])
@@ -193,10 +202,17 @@ def create_main_keyboard(lang_code: str):
         keyboard.append(["🌐 تغيير اللغة"])
     else:
         keyboard = [
-            ["📥 Download Video", "🎧 Download Audio"],
-            ["👤 My Account", "🎁 Referrals"],
-            ["❓ Help"]
+            ["📥 Download Video", "🎧 Download Audio"]
         ]
+
+        # إنشاء الصف الثاني ديناميكياً
+        second_row = ["👤 My Account"]
+        if referral_enabled:
+            second_row.append("🎁 Referrals")
+        keyboard.append(second_row)
+
+        keyboard.append(["❓ Help"])
+
         # إضافة زر VIP فقط إذا كان مفعلاً
         if sub_enabled:
             keyboard.append(["⭐ Subscribe VIP"])
