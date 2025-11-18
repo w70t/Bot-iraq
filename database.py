@@ -105,6 +105,8 @@ __all__ = [
     'use_no_logo_credit',
     'get_referral_stats',
     'get_no_logo_credits',
+    'set_referral_enabled',
+    'is_referral_enabled',
 
     # Errors
     'create_error_report',
