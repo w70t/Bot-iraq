@@ -93,7 +93,7 @@ def generate_referral_code(user_id: int) -> str:
         return None
 
 
-def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool:
+async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool:
     """
     تسجيل إحالة جديدة مع إرسال إشعارات
 
