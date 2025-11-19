@@ -27,33 +27,33 @@ async def show_support_message(update: Update, context: ContextTypes.DEFAULT_TYP
         BINANCE_WALLET = os.getenv("BINANCE_WALLET", "86847466")
         logger.debug(f"💳 [show_support_message] Binance Wallet: {BINANCE_WALLET}")
 
-    # الرسالة الثنائية اللغة
-    support_message = (
-        "💝 **شكراً على دعمك! / Thank you for your support!**\n\n"
-        "════════════════════\n\n"
-        "يمكنك دعم تطوير البوت عبر:\n"
-        "You can support the bot development via:\n\n"
-        "💰 **Binance Pay**\n"
-        f"📋 Pay ID: `{BINANCE_WALLET}`\n\n"
-        "📸 **Instagram**\n"
-        "👤 Username: @7kmmy\n"
-        "🔗 [instagram.com/7kmmy](https://instagram.com/7kmmy)\n\n"
-        "════════════════════\n\n"
-        "🙏 دعمك يساعدنا في:\n"
-        "Your support helps us:\n\n"
-        "✨ تطوير مزايا جديدة / Add new features\n"
-        "⚡ تحسين الأداء / Improve performance\n"
-        "🛡️ تقديم دعم أفضل / Provide better support\n\n"
-        "💖 شكراً لكونك جزءاً من مجتمعنا!\n"
-        "Thank you for being part of our community!"
-    )
+        # الرسالة الثنائية اللغة
+        support_message = (
+            "💝 **شكراً على دعمك! / Thank you for your support!**\n\n"
+            "════════════════════\n\n"
+            "يمكنك دعم تطوير البوت عبر:\n"
+            "You can support the bot development via:\n\n"
+            "💰 **Binance Pay**\n"
+            f"📋 Pay ID: `{BINANCE_WALLET}`\n\n"
+            "📸 **Instagram**\n"
+            "👤 Username: @7kmmy\n"
+            "🔗 [instagram.com/7kmmy](https://instagram.com/7kmmy)\n\n"
+            "════════════════════\n\n"
+            "🙏 دعمك يساعدنا في:\n"
+            "Your support helps us:\n\n"
+            "✨ تطوير مزايا جديدة / Add new features\n"
+            "⚡ تحسين الأداء / Improve performance\n"
+            "🛡️ تقديم دعم أفضل / Provide better support\n\n"
+            "💖 شكراً لكونك جزءاً من مجتمعنا!\n"
+            "Thank you for being part of our community!"
+        )
 
-    # إنشاء الأزرار
-    keyboard = [
-        [InlineKeyboardButton("📱 عرض رمز QR / Show QR Code", callback_data="support_show_qr")],
-        [InlineKeyboardButton("🌐 فتح Instagram / Open Instagram", url="https://instagram.com/7kmmy")],
-        [InlineKeyboardButton("🔙 العودة / Back", callback_data="support_back")]
-    ]
+        # إنشاء الأزرار
+        keyboard = [
+            [InlineKeyboardButton("📱 عرض رمز QR / Show QR Code", callback_data="support_show_qr")],
+            [InlineKeyboardButton("🌐 فتح Instagram / Open Instagram", url="https://instagram.com/7kmmy")],
+            [InlineKeyboardButton("🔙 العودة / Back", callback_data="support_back")]
+        ]
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
