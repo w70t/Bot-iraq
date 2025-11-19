@@ -1455,6 +1455,15 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
             temp_watermarked_path = new_filepath.replace(f".{ext}", f"_watermarked.{ext}")
 
+            # تتبع حالة الملف قبل تطبيق اللوجو
+            logger.info(f"🔍 [TRACE] قبل تطبيق اللوجو:")
+            logger.info(f"  - new_filepath: {new_filepath}")
+            logger.info(f"  - exists: {os.path.exists(new_filepath)}")
+            if os.path.exists(new_filepath):
+                logger.info(f"  - size: {os.path.getsize(new_filepath) / 1024 / 1024:.2f}MB")
+            logger.info(f"  - temp_watermarked_path: {temp_watermarked_path}")
+            logger.info(f"  - logo_path: {logo_path}")
+
             # استخدام ThreadPoolExecutor لتجنب التجميد أثناء FFmpeg
             loop = asyncio.get_event_loop()
             result_path = await loop.run_in_executor(
@@ -1465,9 +1474,20 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 logo_path
             )
 
+            # تتبع حالة الملف بعد تطبيق اللوجو
+            logger.info(f"🔍 [TRACE] بعد تطبيق اللوجو:")
+            logger.info(f"  - result_path: {result_path}")
+            logger.info(f"  - new_filepath exists: {os.path.exists(new_filepath)}")
+            logger.info(f"  - result_path exists: {os.path.exists(result_path)}")
+            logger.info(f"  - temp_watermarked_path exists: {os.path.exists(temp_watermarked_path)}")
+
             if result_path != new_filepath and os.path.exists(result_path):
                 final_video_path = result_path
                 logger.info(f"✨ تم تطبيق اللوجو المتحرك")
+            else:
+                # فشل اللوجو، استخدم الملف الأصلي
+                logger.warning(f"⚠️ فشل تطبيق اللوجو، سيتم استخدام الملف الأصلي")
+                final_video_path = new_filepath
         elif has_credits and not is_subscribed_user and not is_user_admin:
             # المستخدم لديه نقاط ولم يتم وضع اللوجو، فنستهلك نقطة
             if use_no_logo_credit(user_id):
@@ -1478,10 +1498,24 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     text=f"🎨 تم استخدام نقطة بدون لوجو!\n💰 الرصيد المتبقي: {no_logo_credits - 1} فيديو"
                 )
 
-        # Safety check: ensure final_video_path is never None
+        # Safety check: ensure final_video_path is never None and points to existing file
         if final_video_path is None:
             final_video_path = new_filepath
             logger.warning(f"⚠️ final_video_path was None, using new_filepath: {new_filepath}")
+
+        # التحقق النهائي من وجود الملف
+        logger.info(f"🔍 [TRACE] قبل الرفع:")
+        logger.info(f"  - final_video_path: {final_video_path}")
+        logger.info(f"  - exists: {os.path.exists(final_video_path)}")
+
+        if not os.path.exists(final_video_path):
+            # محاولة البحث عن الملف الأصلي
+            logger.error(f"❌ final_video_path غير موجود: {final_video_path}")
+            if os.path.exists(new_filepath):
+                logger.info(f"✅ تم العثور على new_filepath، استخدامه بدلاً منه")
+                final_video_path = new_filepath
+            else:
+                raise FileNotFoundError(f"لم يتم العثور على الملف: {final_video_path} أو {new_filepath}")
 
         file_size = os.path.getsize(final_video_path)
         total_mb = file_size / (1024 * 1024)

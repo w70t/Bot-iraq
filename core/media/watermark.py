@@ -47,6 +47,16 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
     • معالجة أولوية منخفضة لتقليل حمل CPU
     """
     try:
+        # تتبع حالة الملفات قبل البدء
+        logger.info(f"🔍 [TRACE] بدء apply_simple_watermark")
+        logger.info(f"  - input_path: {input_path}")
+        logger.info(f"  - input exists: {os.path.exists(input_path)}")
+        if os.path.exists(input_path):
+            logger.info(f"  - input size: {os.path.getsize(input_path) / 1024 / 1024:.2f}MB")
+        logger.info(f"  - output_path: {output_path}")
+        logger.info(f"  - logo_path: {logo_path}")
+        logger.info(f"  - logo exists: {os.path.exists(logo_path)}")
+
         # الحصول على إحداثيات الموضع المختار
         pos_x, pos_y = get_logo_overlay_position(position)
 
@@ -176,7 +186,11 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
 
         if result.returncode != 0:
             logger.error(f"❌ FFmpeg فشل ({animation_type})")
-            logger.error(f"  stderr: {result.stderr[:300]}")
+            logger.error(f"  Command: {' '.join(cmd)}")
+            logger.error(f"  Return code: {result.returncode}")
+            logger.error(f"  stderr (full): {result.stderr}")
+            logger.error(f"  input_path exists: {os.path.exists(input_path)}")
+            logger.error(f"  output_path exists: {os.path.exists(output_path)}")
             return input_path
 
         if not os.path.exists(output_path):
@@ -261,6 +275,23 @@ def apply_watermark(input_path, output_path, logo_path, position='center', size=
     """
     يطبق لوجو ثابت على الفيديو (احتياطي)
     """
+    # تتبع دقيق لحالة الملفات
+    logger.info(f"🔍 [TRACE] بدء apply_watermark (fallback)")
+    logger.info(f"  - input_path: {input_path}")
+    logger.info(f"  - input exists: {os.path.exists(input_path)}")
+    logger.info(f"  - logo_path: {logo_path}")
+    logger.info(f"  - logo exists: {os.path.exists(logo_path)}")
+    logger.info(f"  - current working directory: {os.getcwd()}")
+
+    # قائمة الملفات في مجلد videos
+    try:
+        videos_dir = os.path.dirname(input_path) or 'videos'
+        if os.path.exists(videos_dir):
+            files_in_dir = os.listdir(videos_dir)
+            logger.info(f"  - files in {videos_dir}: {files_in_dir[:10]}")  # أول 10 ملفات
+    except Exception as e:
+        logger.error(f"  - error listing directory: {e}")
+
     if not os.path.exists(logo_path):
         logger.error(f"❌ مسار اللوجو غير صحيح: {logo_path}")
         return input_path
