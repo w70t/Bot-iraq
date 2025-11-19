@@ -130,23 +130,54 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
             filter_complex = f"{opacity_filter};[0:v][logo]overlay={overlay_x}:{overlay_y}"
             logger.info(f"⚪ تطبيق حركة افتراضية في الموضع: {position}")
 
-        # الأمر مع تحسينات الأداء
+        # الأمر مع تحسينات الأداء والحجم
         # ❌ تم إزالة -movflags +faststart لأنه يسبب حذف الملف المدخل
         # المشكلة: عند فشل إعادة فتح الملف المخرج، FFmpeg يحذف الملف المدخل!
+
+        # محاولة استخدام hardware acceleration إن أمكن
+        hw_accel_cmd = []
+        try:
+            # التحقق من توفر NVIDIA NVENC
+            nvenc_check = subprocess.run(
+                ['ffmpeg', '-hide_banner', '-encoders'],
+                capture_output=True, text=True, timeout=5
+            )
+            if 'h264_nvenc' in nvenc_check.stdout:
+                logger.info("🚀 [apply_simple_watermark] NVENC متاح - استخدام hardware acceleration")
+                hw_accel_cmd = ['-c:v', 'h264_nvenc', '-preset', 'p4']  # p4 = medium quality/speed
+            else:
+                logger.debug("ℹ️ [apply_simple_watermark] NVENC غير متاح - استخدام CPU")
+        except Exception:
+            pass  # Silently fall back to CPU encoding
+
+        # بناء الأمر
         cmd = [
             'ffmpeg', '-y',
             '-i', input_path,
             '-i', logo_path,
             '-filter_complex', filter_complex,
             '-c:a', 'copy',  # نسخ الصوت بدون إعادة ترميز
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',  # أسرع preset
-            '-crf', '28',  # جودة معقولة مع حجم أصغر
-            '-threads', '2',  # تحديد عدد الخيوط لتقليل استهلاك CPU
+        ]
+
+        # إضافة إعدادات الفيديو (hardware أو software)
+        if hw_accel_cmd:
+            cmd.extend(hw_accel_cmd)
+            cmd.extend(['-b:v', '3M', '-maxrate', '4M', '-bufsize', '6M'])  # تحديد bitrate للحجم
+        else:
+            # Software encoding مع توازن أفضل
+            cmd.extend([
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',  # توازن بين السرعة والحجم (أفضل من ultrafast)
+                '-crf', '24',  # جودة جيدة مع حجم معقول (23-28 نطاق جيد)
+                '-tune', 'film',  # تحسين للمحتوى العام
+                '-threads', '4',  # زيادة الخيوط قليلاً للسرعة
+            ])
+
+        cmd.extend([
             # '-movflags', '+faststart',  # ❌ يسبب: Unable to re-open output file
             '-shortest',
             output_path
-        ]
+        ])
 
         logger.info(f"🔄 تنفيذ FFmpeg ({animation_type} في الموضع {position})")
 
@@ -262,6 +293,43 @@ def apply_animated_watermark(input_path, output_path, logo_path, size=None):
 
         if result_path != input_path:
             logger.info(f"✨ تم تطبيق اللوجو بنجاح!")
+
+            # التحقق من حجم الملف الناتج
+            if os.path.exists(result_path):
+                file_size_mb = os.path.getsize(result_path) / 1024 / 1024
+                logger.info(f"📊 [apply_animated_watermark] حجم الفيديو بعد اللوجو: {file_size_mb:.2f}MB")
+
+                # إذا تجاوز 48MB، نضغطه تلقائياً
+                if file_size_mb > 48:
+                    logger.warning(f"⚠️ [apply_animated_watermark] الملف كبير جداً ({file_size_mb:.2f}MB) - بدء الضغط...")
+
+                    # إنشاء مسار مؤقت للملف المضغوط
+                    compressed_path = result_path.replace('.mp4', '_compressed.mp4')
+
+                    # ضغط الفيديو
+                    compressed_result = compress_video_smart(result_path, compressed_path, target_size_mb=48, max_attempts=3)
+
+                    if compressed_result != result_path and os.path.exists(compressed_result):
+                        # نجح الضغط - حذف الملف الكبير واستخدام المضغوط
+                        compressed_size_mb = os.path.getsize(compressed_result) / 1024 / 1024
+                        logger.info(f"✅ [apply_animated_watermark] تم الضغط بنجاح: {file_size_mb:.2f}MB → {compressed_size_mb:.2f}MB")
+
+                        try:
+                            os.remove(result_path)
+                            logger.info(f"🗑️ [apply_animated_watermark] تم حذف الملف الكبير: {result_path}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ [apply_animated_watermark] فشل حذف الملف الكبير: {e}")
+
+                        # نقل الملف المضغوط إلى المسار الأصلي
+                        try:
+                            os.rename(compressed_result, result_path)
+                            logger.info(f"✅ [apply_animated_watermark] تم نقل الملف المضغوط إلى: {result_path}")
+                        except Exception as e:
+                            logger.error(f"❌ [apply_animated_watermark] فشل نقل الملف: {e}")
+                            result_path = compressed_result
+                    else:
+                        logger.warning(f"⚠️ [apply_animated_watermark] فشل الضغط - استخدام الملف الأصلي")
+
             return result_path
         else:
             logger.warning(f"⚠️ فشل اللوجو المتحرك، محاولة اللوجو الثابت...")
@@ -271,6 +339,132 @@ def apply_animated_watermark(input_path, output_path, logo_path, size=None):
         logger.error(f"❌ خطأ عام في اللوجو المتحرك: {str(e)}")
         logger.error(f"تفاصيل الخطأ: {str(e)}")
         return apply_watermark(input_path, output_path, logo_path, position, size)
+
+
+def compress_video_smart(input_path, output_path, target_size_mb=48, max_attempts=3):
+    """
+    ضغط ذكي للفيديو للوصول إلى حجم مستهدف
+
+    Args:
+        input_path: مسار الفيديو المدخل
+        output_path: مسار الفيديو المخرج
+        target_size_mb: الحجم المستهدف بالميجابايت (افتراضي 48MB)
+        max_attempts: عدد محاولات الضغط (افتراضي 3)
+
+    Returns:
+        str: مسار الملف المضغوط في حالة النجاح، أو input_path في حالة الفشل
+    """
+    try:
+        import traceback
+
+        logger.info(f"🗜️ [compress_video_smart] بدء ضغط ذكي للفيديو")
+        logger.info(f"  - input_path: {input_path}")
+        logger.info(f"  - target_size: {target_size_mb}MB")
+
+        if not os.path.exists(input_path):
+            logger.error(f"❌ [compress_video_smart] الملف غير موجود: {input_path}")
+            return input_path
+
+        input_size_mb = os.path.getsize(input_path) / 1024 / 1024
+        logger.info(f"📊 [compress_video_smart] حجم الملف الأصلي: {input_size_mb:.2f}MB")
+
+        if input_size_mb <= target_size_mb:
+            logger.info(f"✅ [compress_video_smart] الملف أصغر من الحد المطلوب ({target_size_mb}MB)")
+            return input_path
+
+        # الحصول على مدة الفيديو
+        probe_cmd = [
+            'ffprobe', '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            input_path
+        ]
+
+        try:
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+            duration_seconds = float(result.stdout.strip())
+            logger.info(f"⏱️ [compress_video_smart] مدة الفيديو: {duration_seconds:.1f}s")
+        except Exception as e:
+            logger.warning(f"⚠️ [compress_video_smart] فشل قراءة مدة الفيديو: {e}")
+            duration_seconds = 180  # افتراض 3 دقائق
+
+        # حساب bitrate المستهدف (90% من الهدف لترك هامش أمان)
+        target_bitrate_kbps = int((target_size_mb * 0.90 * 8192) / duration_seconds)
+        logger.info(f"🎯 [compress_video_smart] bitrate المستهدف: {target_bitrate_kbps}kbps")
+
+        # محاولة الضغط بإعدادات مختلفة
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"🔄 [compress_video_smart] محاولة {attempt}/{max_attempts}")
+
+            # تعديل البتريت حسب المحاولة
+            current_bitrate = int(target_bitrate_kbps * (0.9 ** (attempt - 1)))
+            logger.info(f"  - bitrate للمحاولة {attempt}: {current_bitrate}kbps")
+
+            # اختيار preset حسب المحاولة (أسرع أولاً، ثم أبطأ للضغط أكثر)
+            presets = ['veryfast', 'faster', 'fast']
+            preset = presets[min(attempt - 1, len(presets) - 1)]
+
+            cmd = [
+                'ffmpeg', '-y',
+                '-i', input_path,
+                '-c:v', 'libx264',
+                '-preset', preset,
+                '-b:v', f'{current_bitrate}k',
+                '-maxrate', f'{int(current_bitrate * 1.2)}k',
+                '-bufsize', f'{int(current_bitrate * 2)}k',
+                '-c:a', 'aac',
+                '-b:a', '128k',  # جودة صوت معقولة
+                '-ac', '2',  # ستيريو
+                '-shortest',
+                output_path
+            ]
+
+            logger.info(f"  - preset: {preset}")
+            logger.info(f"🔄 [compress_video_smart] تشغيل FFmpeg...")
+
+            start_time = time.time()
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            elapsed_time = time.time() - start_time
+
+            logger.info(f"⏱️ [compress_video_smart] وقت المعالجة: {elapsed_time:.1f}s")
+
+            if result.returncode != 0:
+                logger.error(f"❌ [compress_video_smart] فشل FFmpeg في المحاولة {attempt}")
+                logger.error(f"  - stderr: {result.stderr[-500:]}")  # آخر 500 حرف
+                continue
+
+            if not os.path.exists(output_path):
+                logger.error(f"❌ [compress_video_smart] ملف الناتج غير موجود")
+                continue
+
+            output_size_mb = os.path.getsize(output_path) / 1024 / 1024
+            logger.info(f"📊 [compress_video_smart] حجم الناتج: {output_size_mb:.2f}MB")
+
+            if output_size_mb <= target_size_mb:
+                reduction_pct = ((input_size_mb - output_size_mb) / input_size_mb) * 100
+                logger.info(f"✅ [compress_video_smart] نجح الضغط! تقليل {reduction_pct:.1f}%")
+                logger.info(f"  - من {input_size_mb:.2f}MB إلى {output_size_mb:.2f}MB")
+                return output_path
+            else:
+                logger.warning(f"⚠️ [compress_video_smart] المحاولة {attempt}: الحجم لا يزال كبيراً ({output_size_mb:.2f}MB)")
+
+        # إذا فشلت جميع المحاولات
+        logger.error(f"❌ [compress_video_smart] فشل الوصول للحجم المستهدف بعد {max_attempts} محاولات")
+
+        # إرجاع آخر نتيجة حتى لو كانت أكبر من الهدف
+        if os.path.exists(output_path):
+            output_size_mb = os.path.getsize(output_path) / 1024 / 1024
+            if output_size_mb < input_size_mb:
+                logger.info(f"ℹ️ [compress_video_smart] استخدام آخر محاولة ({output_size_mb:.2f}MB)")
+                return output_path
+
+        return input_path
+
+    except Exception as e:
+        import traceback
+        logger.error(f"❌ [compress_video_smart] خطأ حرج: {type(e).__name__}: {str(e)}")
+        logger.error(f"📍 [compress_video_smart] Stack trace:\n{traceback.format_exc()}")
+        return input_path
 
 
 def apply_watermark(input_path, output_path, logo_path, position='center', size=150):

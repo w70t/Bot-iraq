@@ -1075,7 +1075,17 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
             return sent_message, None
 
         except (TimedOut, httpx.WriteTimeout, httpx.ReadTimeout, NetworkError) as e:
-            logger.warning(f"⏱️ TimedOut في المحاولة {attempt}/{max_retries}: {e}")
+            import traceback
+            error_msg = str(e)
+            logger.warning(f"⏱️ TimedOut في المحاولة {attempt}/{max_retries}: {error_msg}")
+
+            # التحقق من خطأ 413 (Request Entity Too Large)
+            if '413' in error_msg or 'Request Entity Too Large' in error_msg or 'Too Large' in error_msg:
+                logger.error(f"❌ [send_file_with_retry] الملف أكبر من 50MB - Telegram لا يدعم هذا الحجم!")
+                logger.error(f"  - حجم الملف: {file_size_mb:.2f}MB")
+                logger.error(f"  - الحد الأقصى: 50MB")
+                logger.error(f"📍 [send_file_with_retry] Stack trace:\n{traceback.format_exc()}")
+                return None, Exception(f"Request Entity Too Large")
 
             if attempt < max_retries:
                 # تأخير أطول للملفات الكبيرة
@@ -1088,11 +1098,21 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
             else:
                 # فشلت جميع المحاولات
                 logger.error(f"❌ فشلت جميع المحاولات ({max_retries}) لرفع الملف")
+                logger.error(f"📍 [send_file_with_retry] Stack trace:\n{traceback.format_exc()}")
                 return None, e
 
         except Exception as e:
             # أخطاء أخرى لا تستدعي إعادة المحاولة
-            logger.error(f"❌ خطأ غير متوقع أثناء الرفع: {e}")
+            import traceback
+            logger.error(f"❌ [send_file_with_retry] خطأ غير متوقع أثناء الرفع: {type(e).__name__}: {str(e)}")
+            logger.error(f"📍 [send_file_with_retry] Stack trace:\n{traceback.format_exc()}")
+
+            # التحقق من خطأ 413
+            error_msg = str(e)
+            if '413' in error_msg or 'Request Entity Too Large' in error_msg or 'Too Large' in error_msg:
+                logger.error(f"❌ [send_file_with_retry] الملف أكبر من 50MB - Telegram لا يدعم هذا الحجم!")
+                return None, Exception(f"Request Entity Too Large")
+
             return None, e
 
     return None, Exception("فشل الرفع بعد جميع المحاولات")
@@ -1580,19 +1600,23 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                     pass
 
             # إرسال رسالة للمستخدم مع رابط بديل
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=(
-                    f"⚠️ **حدث خطأ في رفع الملف مباشرة**\n\n"
-                    f"الملف كبير جداً ({file_size_str})\n"
-                    f"ولكن تم تحميله بنجاح على السيرفر!\n\n"
-                    f"🔗 **رابط بديل:** {alternative_url}\n\n"
-                    f"⏱️ المدة: {format_duration(duration)}\n"
-                    f"💡 يمكنك تحميله من الرابط أعلاه"
-                ),
-                reply_to_message_id=update.effective_message.message_id,
-                parse_mode='Markdown'
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=(
+                        f"⚠️ عذراً، الملف كبير جداً للرفع مباشرة!\n\n"
+                        f"📊 الحجم: {file_size_str}\n"
+                        f"⏱️ المدة: {format_duration(duration)}\n\n"
+                        f"💡 نعمل على حل هذه المشكلة قريباً.\n"
+                        f"الرجاء المحاولة مع فيديو أقصر أو جودة أقل."
+                    ),
+                    reply_to_message_id=update.effective_message.message_id,
+                )
+                logger.info(f"✅ [perform_download] تم إرسال رسالة خطأ الحجم للمستخدم {user_id}")
+            except Exception as msg_error:
+                import traceback
+                logger.error(f"❌ [perform_download] فشل إرسال رسالة الخطأ: {type(msg_error).__name__}: {str(msg_error)}")
+                logger.error(f"📍 [perform_download] Stack trace:\n{traceback.format_exc()}")
 
             # إرسال تقرير فشل إلى قناة السجلات مع معلومات كاملة
             if LOG_CHANNEL_ID:
