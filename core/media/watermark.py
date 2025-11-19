@@ -131,6 +131,8 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
             logger.info(f"⚪ تطبيق حركة افتراضية في الموضع: {position}")
 
         # الأمر مع تحسينات الأداء
+        # ❌ تم إزالة -movflags +faststart لأنه يسبب حذف الملف المدخل
+        # المشكلة: عند فشل إعادة فتح الملف المخرج، FFmpeg يحذف الملف المدخل!
         cmd = [
             'ffmpeg', '-y',
             '-i', input_path,
@@ -141,7 +143,7 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
             '-preset', 'ultrafast',  # أسرع preset
             '-crf', '28',  # جودة معقولة مع حجم أصغر
             '-threads', '2',  # تحديد عدد الخيوط لتقليل استهلاك CPU
-            '-movflags', '+faststart',
+            # '-movflags', '+faststart',  # ❌ يسبب: Unable to re-open output file
             '-shortest',
             output_path
         ]
@@ -325,6 +327,7 @@ def apply_watermark(input_path, output_path, logo_path, position='center', size=
 
         pos = positions.get(position, positions['center'])
 
+        # ❌ تم إزالة -movflags +faststart لتجنب حذف الملف المدخل
         cmd = [
             'ffmpeg',
             '-y',
@@ -336,7 +339,7 @@ def apply_watermark(input_path, output_path, logo_path, position='center', size=
             '-c:v', 'libx264',
             '-preset', 'medium',
             '-crf', '23',
-            '-movflags', '+faststart',
+            # '-movflags', '+faststart',  # ❌ يسبب: Unable to re-open output file
             '-shortest',
             output_path
         ]
