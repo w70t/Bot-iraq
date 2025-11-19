@@ -32,6 +32,73 @@ def get_logo_overlay_position(position):
     return x, y
 
 
+def prepare_logo_for_processing(logo_path, max_size=500):
+    """
+    تحضير اللوجو للمعالجة - تصغيره إذا كان كبيراً جداً
+
+    Args:
+        logo_path: مسار اللوجو الأصلي
+        max_size: الحد الأقصى للحجم (افتراضي 500px)
+
+    Returns:
+        str: مسار اللوجو المُحضَّر (قد يكون مؤقتاً إذا تم تصغيره)
+    """
+    try:
+        # الحصول على أبعاد اللوجو باستخدام ffprobe
+        probe_cmd = [
+            'ffprobe', '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries', 'stream=width,height',
+            '-of', 'csv=p=0',
+            logo_path
+        ]
+
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+
+        if result.returncode == 0:
+            dimensions = result.stdout.strip().split(',')
+            if len(dimensions) == 2:
+                width = int(dimensions[0])
+                height = int(dimensions[1])
+
+                logger.info(f"🔍 [prepare_logo] أبعاد اللوجو: {width}x{height}")
+
+                # إذا كان اللوجو كبيراً جداً (أكبر من max_size)، نصغره
+                if width > max_size or height > max_size:
+                    logger.warning(f"⚠️ [prepare_logo] اللوجو كبير جداً ({width}x{height}) - جاري التصغير...")
+
+                    # إنشاء مسار مؤقت للوجو المصغر
+                    temp_logo_path = logo_path.replace('.png', '_resized.png')
+
+                    # تصغير اللوجو مع الحفاظ على نسبة العرض للارتفاع
+                    resize_cmd = [
+                        'ffmpeg', '-y', '-i', logo_path,
+                        '-vf', f'scale={max_size}:{max_size}:force_original_aspect_ratio=decrease',
+                        temp_logo_path
+                    ]
+
+                    resize_result = subprocess.run(resize_cmd, capture_output=True, text=True, timeout=30)
+
+                    if resize_result.returncode == 0 and os.path.exists(temp_logo_path):
+                        new_size = os.path.getsize(temp_logo_path)
+                        logger.info(f"✅ [prepare_logo] تم تصغير اللوجو بنجاح: {width}x{height} → ~{max_size}x{max_size}")
+                        logger.info(f"  - اللوجو المصغر: {temp_logo_path} ({new_size/1024:.1f}KB)")
+                        return temp_logo_path
+                    else:
+                        logger.warning(f"⚠️ [prepare_logo] فشل تصغير اللوجو - استخدام الأصلي")
+                        return logo_path
+                else:
+                    logger.info(f"✅ [prepare_logo] حجم اللوجو مناسب - لا حاجة للتصغير")
+                    return logo_path
+
+        # في حالة فشل ffprobe، استخدم اللوجو الأصلي
+        return logo_path
+
+    except Exception as e:
+        logger.warning(f"⚠️ [prepare_logo] خطأ في تحضير اللوجو: {e}")
+        return logo_path
+
+
 def apply_simple_watermark(input_path, output_path, logo_path, animation_type='corner_rotation', size=150, position='top_right', opacity=0.7):
     """
     دالة موحدة ومبسطة لإضافة اللوجو - محسّنة للأداء
@@ -56,6 +123,10 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
         logger.info(f"  - output_path: {output_path}")
         logger.info(f"  - logo_path: {logo_path}")
         logger.info(f"  - logo exists: {os.path.exists(logo_path)}")
+
+        # تحضير اللوجو (تصغيره إذا كان كبيراً جداً)
+        prepared_logo_path = prepare_logo_for_processing(logo_path, max_size=500)
+        logger.info(f"  - prepared_logo_path: {prepared_logo_path}")
 
         # الحصول على إحداثيات الموضع المختار
         pos_x, pos_y = get_logo_overlay_position(position)
@@ -137,24 +208,31 @@ def apply_simple_watermark(input_path, output_path, logo_path, animation_type='c
         # محاولة استخدام hardware acceleration إن أمكن
         hw_accel_cmd = []
         try:
-            # التحقق من توفر NVIDIA NVENC
-            nvenc_check = subprocess.run(
-                ['ffmpeg', '-hide_banner', '-encoders'],
+            # التحقق الفعلي من NVENC (اختبار حقيقي وليس فقط الوجود في القائمة)
+            test_cmd = [
+                'ffmpeg', '-hide_banner', '-f', 'lavfi', '-i', 'color=black:s=64x64:d=0.1',
+                '-c:v', 'h264_nvenc', '-f', 'null', '-'
+            ]
+            nvenc_test = subprocess.run(
+                test_cmd,
                 capture_output=True, text=True, timeout=5
             )
-            if 'h264_nvenc' in nvenc_check.stdout:
-                logger.info("🚀 [apply_simple_watermark] NVENC متاح - استخدام hardware acceleration")
+
+            if nvenc_test.returncode == 0:
+                logger.info("🚀 [apply_simple_watermark] NVENC متاح ويعمل - استخدام hardware acceleration")
                 hw_accel_cmd = ['-c:v', 'h264_nvenc', '-preset', 'p4']  # p4 = medium quality/speed
             else:
-                logger.debug("ℹ️ [apply_simple_watermark] NVENC غير متاح - استخدام CPU")
-        except Exception:
+                logger.debug("ℹ️ [apply_simple_watermark] NVENC غير متاح أو لا يعمل - استخدام CPU")
+                logger.debug(f"  - NVENC test stderr: {nvenc_test.stderr[:200]}")
+        except Exception as e:
+            logger.debug(f"ℹ️ [apply_simple_watermark] فشل فحص NVENC: {e}")
             pass  # Silently fall back to CPU encoding
 
         # بناء الأمر
         cmd = [
             'ffmpeg', '-y',
             '-i', input_path,
-            '-i', logo_path,
+            '-i', prepared_logo_path,  # استخدام اللوجو المُحضَّر (المصغر إذا لزم الأمر)
             '-filter_complex', filter_complex,
             '-c:a', 'copy',  # نسخ الصوت بدون إعادة ترميز
         ]
@@ -469,7 +547,7 @@ def compress_video_smart(input_path, output_path, target_size_mb=48, max_attempt
 
 def apply_watermark(input_path, output_path, logo_path, position='center', size=150):
     """
-    يطبق لوجو ثابت على الفيديو (احتياطي)
+    يطبق لوجو ثابت على الفيديو (احتياطي محسّن)
     """
     # تتبع دقيق لحالة الملفات
     logger.info(f"🔍 [TRACE] بدء apply_watermark (fallback)")
@@ -499,6 +577,9 @@ def apply_watermark(input_path, output_path, logo_path, position='center', size=
     try:
         logger.info(f"🎨 إضافة لوجو ثابت: {input_path}")
 
+        # تحضير اللوجو (تصغيره إذا كان كبيراً جداً)
+        prepared_logo_path = prepare_logo_for_processing(logo_path, max_size=500)
+
         # التأكد من أن size قيمة صحيحة
         if size is None or not isinstance(size, (int, float)):
             size = 150
@@ -521,24 +602,43 @@ def apply_watermark(input_path, output_path, logo_path, position='center', size=
 
         pos = positions.get(position, positions['center'])
 
-        # ❌ تم إزالة -movflags +faststart لتجنب حذف الملف المدخل
+        # الحصول على مدة الفيديو لحساب timeout مناسب
+        try:
+            probe_cmd = [
+                'ffprobe', '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                input_path
+            ]
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=10)
+            duration_seconds = float(probe_result.stdout.strip())
+            # timeout = مدة الفيديو × 3 + 120 ثانية (أقل من 10 دقائق كحد أدنى)
+            processing_timeout = max(600, int(duration_seconds * 3 + 120))
+            logger.info(f"⏱️ [apply_watermark] مدة الفيديو: {duration_seconds:.1f}s - timeout: {processing_timeout}s")
+        except Exception as e:
+            logger.warning(f"⚠️ [apply_watermark] فشل قراءة مدة الفيديو: {e}")
+            processing_timeout = 600  # افتراضي 10 دقائق
+
+        # بناء الأمر مع إعدادات محسّنة
         cmd = [
             'ffmpeg',
             '-y',
             '-i', input_path,
-            '-i', logo_path,
+            '-i', prepared_logo_path,  # استخدام اللوجو المُحضَّر
             '-filter_complex',
             f'[1:v]scale={size}:-1[logo];[0:v][logo]overlay={pos}',
             '-c:a', 'copy',
             '-c:v', 'libx264',
-            '-preset', 'medium',
-            '-crf', '23',
+            '-preset', 'veryfast',  # أسرع من medium - تحسين السرعة
+            '-crf', '24',  # جودة جيدة
+            '-threads', '4',  # تسريع
             # '-movflags', '+faststart',  # ❌ يسبب: Unable to re-open output file
             '-shortest',
             output_path
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        logger.info(f"🔄 [apply_watermark] بدء المعالجة (timeout: {processing_timeout}s)")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=processing_timeout)
 
         if result.returncode == 0 and os.path.exists(output_path):
             file_size = os.path.getsize(output_path)
