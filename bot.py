@@ -17,6 +17,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from telegram.request import HTTPXRequest
 
 # استيراد المكونات من الهيكل الجديد
 from handlers.user import (
@@ -537,9 +538,19 @@ def main() -> None:
 
     # إنشاء التطبيق
     # Performance optimization: increased concurrent_updates from 10 to 100
+    # تكوين timeout أطول لتجنب أخطاء الشبكة
+    request = HTTPXRequest(
+        connection_pool_size=20,
+        connect_timeout=30.0,
+        read_timeout=30.0,
+        write_timeout=30.0,
+        pool_timeout=30.0
+    )
+
     application = (
         Application.builder()
         .token(BOT_TOKEN)
+        .request(request)
         .post_init(post_init)
         .concurrent_updates(100)
         .build()
