@@ -18,6 +18,10 @@ def add_user(user_id: int, username: str = None, full_name: str = None, language
     Returns:
         bool: True إذا كان مستخدم جديد، False إذا كان موجود مسبقاً
     """
+    if not ensure_db_connection():
+        logger.error("❌ [add_user] فشل الاتصال بقاعدة البيانات")
+        return False
+
     try:
         user_data = {
             'user_id': user_id,
@@ -77,6 +81,10 @@ def get_all_users():
 
 def update_user_language(user_id: int, language: str):
     """تحديث لغة المستخدم"""
+    if not ensure_db_connection():
+        logger.error("❌ [update_user_language] فشل الاتصال بقاعدة البيانات")
+        return False
+
     try:
         users_collection.update_one(
             {'user_id': user_id},
@@ -91,6 +99,10 @@ def update_user_language(user_id: int, language: str):
 
 def get_user_language(user_id: int) -> str:
     """جلب لغة المستخدم"""
+    if not ensure_db_connection():
+        logger.error("❌ [get_user_language] فشل الاتصال بقاعدة البيانات")
+        return 'ar'  # افتراضي
+
     try:
         user = users_collection.find_one({'user_id': user_id})
         if user and 'language' in user:
@@ -103,6 +115,10 @@ def get_user_language(user_id: int) -> str:
 
 def update_user_interaction(user_id: int):
     """تحديث آخر تفاعل للمستخدم"""
+    if not ensure_db_connection():
+        logger.error("❌ [update_user_interaction] فشل الاتصال بقاعدة البيانات")
+        return False
+
     try:
         users_collection.update_one(
             {'user_id': user_id},
@@ -116,6 +132,10 @@ def update_user_interaction(user_id: int):
 
 def delete_user(user_id: int):
     """حذف مستخدم"""
+    if not ensure_db_connection():
+        logger.error("❌ [delete_user] فشل الاتصال بقاعدة البيانات")
+        return False
+
     try:
         result = users_collection.delete_one({'user_id': user_id})
         if result.deleted_count > 0:
@@ -129,6 +149,10 @@ def delete_user(user_id: int):
 
 def get_user_stats(user_id: int):
     """جلب إحصائيات المستخدم"""
+    if not ensure_db_connection():
+        logger.error("❌ [get_user_stats] فشل الاتصال بقاعدة البيانات")
+        return None
+
     try:
         from .subscriptions import is_subscribed
         from .downloads import get_daily_download_count

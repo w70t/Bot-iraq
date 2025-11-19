@@ -17,10 +17,15 @@ async def show_support_message(update: Update, context: ContextTypes.DEFAULT_TYP
     عرض رسالة الدعم الرئيسية مع خيارات الدفع
     """
     user_id = update.effective_user.id
-    lang = get_user_language(user_id)
+    logger.info(f"💝 [show_support_message] المستخدم {user_id} فتح صفحة الدعم")
 
-    # معرف الدفع Binance
-    BINANCE_WALLET = os.getenv("BINANCE_WALLET", "86847466")
+    try:
+        lang = get_user_language(user_id)
+        logger.debug(f"🌐 [show_support_message] لغة المستخدم: {lang}")
+
+        # معرف الدفع Binance
+        BINANCE_WALLET = os.getenv("BINANCE_WALLET", "86847466")
+        logger.debug(f"💳 [show_support_message] Binance Wallet: {BINANCE_WALLET}")
 
     # الرسالة الثنائية اللغة
     support_message = (
@@ -50,28 +55,47 @@ async def show_support_message(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("🔙 العودة / Back", callback_data="support_back")]
     ]
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # إرسال أو تعديل الرسالة
-    if update.callback_query:
-        query = update.callback_query
-        await query.answer()
+        # إرسال أو تعديل الرسالة
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer()
+            logger.debug(f"📝 [show_support_message] إرسال عبر callback query...")
 
-        # فحص إذا كانت الرسالة مختلفة قبل التعديل
-        if query.message.text != support_message:
-            await query.edit_message_text(
-                text=support_message,
+            # فحص إذا كانت الرسالة مختلفة قبل التعديل
+            if query.message.text != support_message:
+                await query.edit_message_text(
+                    text=support_message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+                logger.info(f"✅ [show_support_message] تم تعديل رسالة الدعم للمستخدم {user_id}")
+        else:
+            logger.debug(f"📝 [show_support_message] إرسال عبر رسالة جديدة...")
+            await update.message.reply_text(
+                support_message,
                 reply_markup=reply_markup,
                 parse_mode='Markdown',
                 disable_web_page_preview=True
             )
-    else:
-        await update.message.reply_text(
-            support_message,
-            reply_markup=reply_markup,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
+            logger.info(f"✅ [show_support_message] تم إرسال رسالة الدعم للمستخدم {user_id}")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"❌ [show_support_message] خطأ حرج للمستخدم {user_id}: {type(e).__name__}: {str(e)}")
+        logger.error(f"📍 [show_support_message] Stack trace:\n{traceback.format_exc()}")
+
+        # إرسال رسالة خطأ للمستخدم
+        error_message = "❌ حدث خطأ في عرض صفحة الدعم. الرجاء المحاولة لاحقاً."
+        try:
+            if update.callback_query:
+                await update.callback_query.answer(error_message, show_alert=True)
+            else:
+                await update.message.reply_text(error_message)
+        except:
+            pass
 
 
 def create_placeholder_qr(qr_image_path: str) -> bool:
