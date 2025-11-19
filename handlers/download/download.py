@@ -532,12 +532,19 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
         'extract_flat': False,
         'ignoreerrors': False,
         'nocheckcertificate': True,
-        # تحسينات السرعة العامة
-        'concurrent_fragment_downloads': 8,
+        # تحسينات السرعة العامة - محسّنة للتحميل السريع
+        'concurrent_fragment_downloads': 16,  # زيادة من 8 إلى 16 لتحميل أسرع
         'retries': 20,
         'fragment_retries': 20,
-        'http_chunk_size': 10485760,  # 10MB
-        'buffersize': 1024 * 1024,  # 1MB
+        'http_chunk_size': 16777216,  # 16MB - زيادة من 10MB لسرعة أعلى
+        'buffersize': 16777216,  # 16MB - زيادة من 1MB لأداء أفضل
+        # تحسينات إضافية للسرعة
+        'throttledratelimit': None,  # إلغاء أي تحديد للسرعة
+        'noprogress': False,  # إظهار التقدم
+        'no_check_certificate': True,  # تسريع SSL
+        'prefer_insecure': False,  # استخدام HTTPS لكن بدون تحقق صارم
+        # تحسينات الشبكة
+        'socket_timeout': 30,  # timeout معقول
         # إعدادات التوافق العامة
         'compat_opts': ['no-youtube-unavailable-videos'],
     }
@@ -754,6 +761,7 @@ def get_ydl_opts_for_platform(url: str, quality: str = 'best'):
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Sec-Fetch-Mode': 'navigate',
+                'Connection': 'keep-alive',  # استخدام keep-alive لسرعة أعلى
             },
             # إعدادات إضافية للستوريات
             'sleep_interval': 2 if is_story else 0,

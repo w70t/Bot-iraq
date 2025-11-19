@@ -302,6 +302,13 @@ async def download_videos(update: Update, context: ContextTypes.DEFAULT_TYPE, qu
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'continuedl': True,
         'progress_hooks': [progress_tracker.progress_hook],
+        # تحسينات السرعة - مطابقة للإعدادات الرئيسية
+        'concurrent_fragment_downloads': 16,
+        'http_chunk_size': 16777216,  # 16MB
+        'buffersize': 16777216,  # 16MB
+        'throttledratelimit': None,
+        'nocheckcertificate': True,
+        'socket_timeout': 30,
     }
 
     successful = 0
