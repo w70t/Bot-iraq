@@ -626,7 +626,7 @@ def main() -> None:
     
     # 6. Handler لأزرار القائمة الرئيسية
     application.add_handler(MessageHandler(
-        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|🎧 تحميل صوت|🎧 Download Audio|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|🎁 دعم صاحب البوت|🎁 Support the Creator|🌐 تغيير اللغة|🌐 Change Language)$"),
+        filters.Regex("^(📥 تحميل فيديو|📥 Download Video|🎧 تحميل صوت|🎧 Download Audio|👤 حسابي|👤 My Account|🎁 الإحالات|🎁 Referrals|❓ المساعدة|❓ Help|⭐ الاشتراك VIP|⭐ Subscribe VIP|💝 دعم صاحب البوت|💝 Support the Creator|🌐 تغيير اللغة|🌐 Change Language)$"),
         handle_menu_buttons
     ))
 
