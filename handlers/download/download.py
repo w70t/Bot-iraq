@@ -62,6 +62,7 @@ from utils import (
     send_video_report, rate_limit, validate_url, log_warning,
     get_cached_user_data, clear_user_cache
 )
+from core.utils.helpers import safe_edit_message
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -919,16 +920,14 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
 
             # تحديث رسالة المستخدم
             if progress_message:
-                try:
-                    await progress_message.edit_text(
-                        f"🗜️ **جاري ضغط الملف...**\n\n"
-                        f"📦 الحجم الأصلي: {file_size_mb:.1f} MB\n"
-                        f"🎵 الجودة: 128 kbps\n\n"
-                        f"⏳ الرجاء الانتظار...",
-                        parse_mode='Markdown'
-                    )
-                except:
-                    pass
+                await safe_edit_message(
+                    progress_message,
+                    f"🗜️ **جاري ضغط الملف...**\n\n"
+                    f"📦 الحجم الأصلي: {file_size_mb:.1f} MB\n"
+                    f"🎵 الجودة: 128 kbps\n\n"
+                    f"⏳ الرجاء الانتظار...",
+                    parse_mode='Markdown'
+                )
 
             # مسار الملف المضغوط
             compressed_path = file_path.replace(".mp3", "_compressed.mp3")
@@ -1010,16 +1009,14 @@ async def send_file_with_retry(context, chat_id, file_path, is_audio, caption, r
 
             # تحديث رسالة المستخدم بحالة الرفع
             if progress_message:
-                try:
-                    await progress_message.edit_text(
-                        f"📤 **جاري رفع الملف...**\n\n"
-                        f"📦 الحجم: {file_size_mb:.1f} MB\n"
-                        f"⏱️ قد يستغرق دقائق حسب حجم الملف\n\n"
-                        f"⏳ الرجاء الانتظار...",
-                        parse_mode='Markdown'
-                    )
-                except:
-                    pass
+                await safe_edit_message(
+                    progress_message,
+                    f"📤 **جاري رفع الملف...**\n\n"
+                    f"📦 الحجم: {file_size_mb:.1f} MB\n"
+                    f"⏱️ قد يستغرق دقائق حسب حجم الملف\n\n"
+                    f"⏳ الرجاء الانتظار...",
+                    parse_mode='Markdown'
+                )
 
             # قياس وقت الرفع بدقة
             upload_start_time = time.time()
@@ -1165,7 +1162,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     try:
         # إذا كان منشور صور من تيك توك أو انستقرام
         if is_image_post:
-            await processing_message.edit_text("📷 اكتشفت صوراً! جاري التحميل...")
+            await safe_edit_message(processing_message, "📷 اكتشفت صوراً! جاري التحميل...")
             
             loop = asyncio.get_event_loop()
             
@@ -1222,9 +1219,9 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             
             title = info_dict.get('title', 'صور')
             uploader = info_dict.get('uploader', 'Unknown')[:40]
-            
+
             # إرسال الصور للمستخدم
-            await processing_message.edit_text(f"📤 جاري رفع {len(image_files)} صورة...")
+            await safe_edit_message(processing_message, f"📤 جاري رفع {len(image_files)} صورة...")
             
             caption_text = (
                 f"📷 {title[:50]}\n\n"
@@ -1488,15 +1485,16 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
         file_size = os.path.getsize(final_video_path)
         total_mb = file_size / (1024 * 1024)
-        
-        await processing_message.edit_text(
+
+        await safe_edit_message(
+            processing_message,
             f"📤 جاري الرفع...\n\n"
             f"⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜ 0%\n\n"
             f"📦 الحجم: {total_mb:.1f} MB"
         )
         
         if file_size > 2 * 1024 * 1024 * 1024:
-            await processing_message.edit_text("❌ الملف كبير جداً! (أكثر من 2GB)")
+            await safe_edit_message(processing_message, "❌ الملف كبير جداً! (أكثر من 2GB)")
             return
         
         duration = info_dict.get('duration', 0)
@@ -1757,10 +1755,11 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
         error_text += "شكراً لصبرك! 💚"
 
-        try:
-            await processing_message.edit_text(error_text, parse_mode='Markdown')
-        except Exception as edit_error:
-            log_warning(f"فشل تعديل رسالة الخطأ: {edit_error}", module="handlers/download.py")
+        # محاولة تحديث الرسالة مع retry mechanism
+        success = await safe_edit_message(processing_message, error_text, parse_mode='Markdown')
+
+        # إذا فشل التحديث، إرسال رسالة جديدة
+        if not success:
             try:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,

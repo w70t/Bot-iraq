@@ -1074,3 +1074,49 @@ def cleanup_old_files(max_age_hours: int = 24):
 # تسجيل دالة التنظيف عند إغلاق البوت
 import atexit
 atexit.register(cleanup_temp_files)
+
+
+# ==================== Retry Mechanism for Telegram API ====================
+
+import asyncio
+from telegram.error import TimedOut, NetworkError
+
+
+async def safe_edit_message(message, text: str, max_retries: int = 4, **kwargs):
+    """
+    محاولة تحديث رسالة مع retry mechanism وexponential backoff
+
+    Args:
+        message: رسالة Telegram المراد تحديثها
+        text: النص الجديد
+        max_retries: عدد المحاولات (افتراضي 4)
+        **kwargs: معاملات إضافية لـ edit_text
+
+    Returns:
+        True إذا نجح التحديث، False إذا فشل
+    """
+    retry_delays = [2, 4, 8, 16]  # Exponential backoff
+
+    for attempt in range(max_retries):
+        try:
+            await message.edit_text(text, **kwargs)
+            return True
+
+        except (TimedOut, NetworkError) as e:
+            if attempt < max_retries - 1:
+                delay = retry_delays[attempt]
+                logger.warning(
+                    f"⚠️ فشل تحديث الرسالة (محاولة {attempt + 1}/{max_retries}). "
+                    f"إعادة المحاولة بعد {delay}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ فشل تحديث الرسالة بعد {max_retries} محاولات: {e}")
+                return False
+
+        except Exception as e:
+            # أخطاء أخرى (مثل Bad Request) لا تحتاج retry
+            logger.debug(f"⚠️ لم يتم تحديث الرسالة: {e}")
+            return False
+
+    return False
