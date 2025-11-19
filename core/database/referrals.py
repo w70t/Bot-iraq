@@ -24,6 +24,12 @@ def generate_referral_code(user_id: int) -> str:
     logger.info(f"🔵 [{function_name}] بدء التنفيذ للمستخدم: {user_id}")
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات وإعادة الاتصال إن لزم الأمر
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات للمستخدم {user_id}")
+            return None
+
         # التحقق من صحة user_id
         if not user_id or not isinstance(user_id, int):
             logger.error(f"❌ [{function_name}] خطأ: user_id غير صالح: {user_id}")
@@ -32,7 +38,7 @@ def generate_referral_code(user_id: int) -> str:
         logger.debug(f"🔍 [{function_name}] البحث عن المستخدم {user_id} في قاعدة البيانات...")
 
         # التحقق إذا كان المستخدم لديه كود بالفعل
-        user = users_collection.find_one({'user_id': user_id})
+        user = uc.find_one({'user_id': user_id})
 
         if user and user.get('referral_code'):
             existing_code = user['referral_code']
@@ -53,7 +59,7 @@ def generate_referral_code(user_id: int) -> str:
             logger.debug(f"🎲 [{function_name}] محاولة {attempt}/{max_attempts}: توليد الكود {code}")
 
             # التأكد من عدم تكرار الكود
-            existing = users_collection.find_one({'referral_code': code})
+            existing = uc.find_one({'referral_code': code})
             if not existing:
                 logger.debug(f"✅ [{function_name}] الكود {code} فريد، متابعة الحفظ...")
                 break
@@ -68,7 +74,7 @@ def generate_referral_code(user_id: int) -> str:
         logger.debug(f"💾 [{function_name}] حفظ الكود {code} في قاعدة البيانات للمستخدم {user_id}...")
 
         # حفظ الكود في قاعدة البيانات
-        result = users_collection.update_one(
+        result = uc.update_one(
             {'user_id': user_id},
             {
                 '$set': {
@@ -109,6 +115,12 @@ async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool
     logger.info(f"🔵 [{function_name}] بدء تتبع إحالة - الكود: {referrer_code}, المستخدم الجديد: {new_user_id}")
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات وإعادة الاتصال إن لزم الأمر
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات")
+            return False
+
         # التحقق من صحة المدخلات
         if not referrer_code or not isinstance(referrer_code, str):
             logger.error(f"❌ [{function_name}] خطأ: referrer_code غير صالح: {referrer_code}")
@@ -121,7 +133,7 @@ async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool
         logger.debug(f"🔍 [{function_name}] البحث عن المستخدم المحيل بالكود: {referrer_code}...")
 
         # البحث عن المستخدم المحيل بالكود
-        referrer = users_collection.find_one({'referral_code': referrer_code})
+        referrer = uc.find_one({'referral_code': referrer_code})
 
         if not referrer:
             logger.warning(f"⚠️ [{function_name}] كود إحالة غير موجود في قاعدة البيانات: {referrer_code}")
@@ -144,21 +156,21 @@ async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool
         logger.debug(f"🔍 [{function_name}] التحقق من حالة المستخدم الجديد {new_user_id}...")
 
         # التحقق من عدم تسجيل الإحالة مسبقاً
-        existing_user = users_collection.find_one({'user_id': new_user_id})
+        existing_user = uc.find_one({'user_id': new_user_id})
         if existing_user and existing_user.get('referred_by'):
             previous_referrer = existing_user.get('referred_by')
             logger.warning(f"⚠️ [{function_name}] المستخدم {new_user_id} تم إحالته بالفعل من قبل المستخدم {previous_referrer}")
             return False
 
         # جلب بيانات المستخدم الجديد
-        new_user = users_collection.find_one({'user_id': new_user_id})
+        new_user = uc.find_one({'user_id': new_user_id})
         new_user_name = new_user.get('full_name', 'مستخدم جديد') if new_user else 'مستخدم جديد'
 
         logger.info(f"👤 [{function_name}] بيانات المستخدم الجديد - ID: {new_user_id}, الاسم: {new_user_name}")
         logger.debug(f"💾 [{function_name}] تسجيل الإحالة في قاعدة البيانات...")
 
         # تسجيل الإحالة للمستخدم الجديد
-        result_referred = users_collection.update_one(
+        result_referred = uc.update_one(
             {'user_id': new_user_id},
             {
                 '$set': {
@@ -176,7 +188,7 @@ async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool
         logger.debug(f"💰 [{function_name}] تحديث رصيد المحيل {referrer_id}...")
 
         # زيادة عداد الإحالات للمحيل
-        result_referrer = users_collection.update_one(
+        result_referrer = uc.update_one(
             {'user_id': referrer_id},
             {
                 '$inc': {
@@ -191,7 +203,7 @@ async def track_referral(referrer_code: str, new_user_id: int, bot=None) -> bool
             # لا نرجع False لأن الإحالة تم تسجيلها
 
         # حساب الرصيد الجديد
-        updated_referrer = users_collection.find_one({'user_id': referrer_id})
+        updated_referrer = uc.find_one({'user_id': referrer_id})
         new_balance = updated_referrer.get('no_logo_credits', 10) if updated_referrer else 10
         new_referral_count = updated_referrer.get('referral_count', 1) if updated_referrer else 1
 
@@ -274,6 +286,12 @@ def add_referral_points(user_id: int, points: int = 5) -> bool:
     logger.info(f"🔵 [{function_name}] إضافة {points} نقطة للمستخدم {user_id}")
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات")
+            return False
+
         # التحقق من صحة المدخلات
         if not user_id or not isinstance(user_id, int):
             logger.error(f"❌ [{function_name}] خطأ: user_id غير صالح: {user_id}")
@@ -285,7 +303,7 @@ def add_referral_points(user_id: int, points: int = 5) -> bool:
 
         logger.debug(f"💾 [{function_name}] تحديث رصيد المستخدم {user_id}...")
 
-        result = users_collection.update_one(
+        result = uc.update_one(
             {'user_id': user_id},
             {'$inc': {'no_logo_credits': points}},
             upsert=True
@@ -293,7 +311,7 @@ def add_referral_points(user_id: int, points: int = 5) -> bool:
 
         if result.acknowledged:
             # جلب الرصيد الجديد
-            user = users_collection.find_one({'user_id': user_id})
+            user = uc.find_one({'user_id': user_id})
             new_balance = user.get('no_logo_credits', points) if user else points
             logger.info(f"✅ [{function_name}] نجح! تمت إضافة {points} نقطة للمستخدم {user_id}، الرصيد الجديد: {new_balance}")
             return True
@@ -321,6 +339,12 @@ def use_no_logo_credit(user_id: int) -> bool:
     logger.info(f"🔵 [{function_name}] محاولة خصم نقطة من رصيد المستخدم {user_id}")
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات")
+            return False
+
         # التحقق من صحة user_id
         if not user_id or not isinstance(user_id, int):
             logger.error(f"❌ [{function_name}] خطأ: user_id غير صالح: {user_id}")
@@ -328,7 +352,7 @@ def use_no_logo_credit(user_id: int) -> bool:
 
         logger.debug(f"🔍 [{function_name}] البحث عن المستخدم {user_id}...")
 
-        user = users_collection.find_one({'user_id': user_id})
+        user = uc.find_one({'user_id': user_id})
 
         if not user:
             logger.warning(f"⚠️ [{function_name}] المستخدم {user_id} غير موجود في قاعدة البيانات")
@@ -344,7 +368,7 @@ def use_no_logo_credit(user_id: int) -> bool:
         logger.debug(f"💾 [{function_name}] خصم نقطة من رصيد المستخدم {user_id}...")
 
         # خصم نقطة واحدة
-        result = users_collection.update_one(
+        result = uc.update_one(
             {'user_id': user_id},
             {'$inc': {'no_logo_credits': -1}}
         )
@@ -384,6 +408,12 @@ def get_referral_stats(user_id: int) -> dict:
     }
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات")
+            return default_stats
+
         # التحقق من صحة user_id
         if not user_id or not isinstance(user_id, int):
             logger.error(f"❌ [{function_name}] خطأ: user_id غير صالح: {user_id}")
@@ -391,7 +421,7 @@ def get_referral_stats(user_id: int) -> dict:
 
         logger.debug(f"🔍 [{function_name}] البحث عن المستخدم {user_id}...")
 
-        user = users_collection.find_one({'user_id': user_id})
+        user = uc.find_one({'user_id': user_id})
 
         if not user:
             logger.debug(f"⚠️ [{function_name}] المستخدم {user_id} غير موجود، إرجاع إحصائيات افتراضية")
@@ -427,6 +457,12 @@ def get_no_logo_credits(user_id: int) -> int:
     logger.debug(f"🔵 [{function_name}] جلب رصيد النقاط للمستخدم {user_id}")
 
     try:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, users_collection as uc
+        if not ensure_db_connection():
+            logger.error(f"❌ [{function_name}] فشل الاتصال بقاعدة البيانات")
+            return 0
+
         # التحقق من صحة user_id
         if not user_id or not isinstance(user_id, int):
             logger.error(f"❌ [{function_name}] خطأ: user_id غير صالح: {user_id}")
@@ -434,7 +470,7 @@ def get_no_logo_credits(user_id: int) -> int:
 
         logger.debug(f"🔍 [{function_name}] البحث عن المستخدم {user_id}...")
 
-        user = users_collection.find_one({'user_id': user_id})
+        user = uc.find_one({'user_id': user_id})
 
         if not user:
             logger.debug(f"⚠️ [{function_name}] المستخدم {user_id} غير موجود، الرصيد: 0")
@@ -457,10 +493,13 @@ def get_no_logo_credits(user_id: int) -> int:
 def get_global_settings():
     """جلب الإعدادات العامة للبوت"""
     try:
-        if settings_collection is None:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, settings_collection as sc
+        if not ensure_db_connection() or sc is None:
+            logger.error("❌ [get_global_settings] فشل الاتصال بقاعدة البيانات")
             return None
 
-        settings = settings_collection.find_one({'_id': 'global_settings'})
+        settings = sc.find_one({'_id': 'global_settings'})
 
         # إنشاء الإعدادات الافتراضية إذا لم تكن موجودة
         if not settings:
@@ -469,27 +508,31 @@ def get_global_settings():
                 'referral_enabled': True,  # نظام الإحالة مفعل افتراضياً
                 'last_updated': datetime.now()
             }
-            settings_collection.update_one(
+            sc.update_one(
                 {'_id': 'global_settings'},
                 {'$setOnInsert': default_settings},
                 upsert=True
             )
             logger.info("✅ تم إنشاء إعدادات نظام الإحالة الافتراضية")
-            return settings_collection.find_one({'_id': 'global_settings'})
+            return sc.find_one({'_id': 'global_settings'})
 
         return settings
     except Exception as e:
         logger.error(f"❌ فشل جلب إعدادات نظام الإحالة: {e}")
+        logger.error(f"📍 Stack trace:\n{traceback.format_exc()}")
         return None
 
 
 def set_referral_enabled(enabled: bool):
     """تفعيل أو إيقاف نظام الإحالة"""
     try:
-        if settings_collection is None:
+        # ⭐ التحقق من الاتصال بقاعدة البيانات
+        from .base import ensure_db_connection, settings_collection as sc
+        if not ensure_db_connection() or sc is None:
+            logger.error("❌ [set_referral_enabled] فشل الاتصال بقاعدة البيانات")
             return False
 
-        settings_collection.update_one(
+        sc.update_one(
             {'_id': 'global_settings'},
             {
                 '$set': {
@@ -505,6 +548,7 @@ def set_referral_enabled(enabled: bool):
         return True
     except Exception as e:
         logger.error(f"❌ فشل تحديث حالة نظام الإحالة: {e}")
+        logger.error(f"📍 Stack trace:\n{traceback.format_exc()}")
         return False
 
 

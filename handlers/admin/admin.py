@@ -2143,25 +2143,41 @@ async def handle_sub_toggle_notif(update: Update, context: ContextTypes.DEFAULT_
 async def handle_toggle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تبديل حالة نظام الإحالة"""
     query = update.callback_query
+    user_id = query.from_user.id
+    logger.info(f"🎁 [handle_toggle_referral] المستخدم {user_id} يحاول تبديل نظام الإحالة")
+
     await query.answer()
 
-    from database import is_referral_enabled, set_referral_enabled
+    try:
+        from database import is_referral_enabled, set_referral_enabled
 
-    # الحصول على الحالة الحالية
-    current_status = is_referral_enabled()
-    new_status = not current_status
+        # الحصول على الحالة الحالية
+        logger.debug(f"🔍 [handle_toggle_referral] جلب الحالة الحالية لنظام الإحالة...")
+        current_status = is_referral_enabled()
+        new_status = not current_status
+        logger.info(f"🔄 [handle_toggle_referral] الحالة: {current_status} → {new_status}")
 
-    # حفظ التغيير
-    success = set_referral_enabled(new_status)
+        # حفظ التغيير
+        logger.debug(f"💾 [handle_toggle_referral] حفظ التغيير...")
+        success = set_referral_enabled(new_status)
 
-    if success:
-        status_text = "✅ مفعّل" if new_status else "❌ معطّل"
-        await query.answer(f"🎁 نظام الإحالة الآن: {status_text}", show_alert=True)
-    else:
-        await query.answer("❌ فشل تغيير حالة نظام الإحالة!", show_alert=True)
+        if success:
+            status_text = "✅ مفعّل" if new_status else "❌ معطّل"
+            logger.info(f"✅ [handle_toggle_referral] نجح! نظام الإحالة الآن: {status_text}")
+            await query.answer(f"🎁 نظام الإحالة الآن: {status_text}", show_alert=True)
+        else:
+            logger.error(f"❌ [handle_toggle_referral] فشل تغيير حالة نظام الإحالة!")
+            await query.answer("❌ فشل تغيير حالة نظام الإحالة! تحقق من السجلات.", show_alert=True)
 
-    # العودة للوحة التحكم الرئيسية
-    return await admin_panel(update, context)
+        # العودة للوحة التحكم الرئيسية
+        return await admin_panel(update, context)
+
+    except Exception as e:
+        import traceback
+        logger.error(f"❌ [handle_toggle_referral] خطأ حرج: {type(e).__name__}: {str(e)}")
+        logger.error(f"📍 [handle_toggle_referral] Stack trace:\n{traceback.format_exc()}")
+        await query.answer("❌ خطأ حرج! تحقق من السجلات.", show_alert=True)
+        return await admin_panel(update, context)
 
 
 # ═══════════════════════════════════════════════════════════════
