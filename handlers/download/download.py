@@ -351,29 +351,28 @@ async def show_quality_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     """عرض قائمة اختيار الجودة - مبسطة"""
     user_id = update.effective_user.id
     lang = get_user_language(user_id)
-    
-    title = info_dict.get('title', 'فيديو')[:50]
+
+    title = info_dict.get('title', get_message(lang, 'title_not_found', 'فيديو'))[:50]
     duration = format_duration(info_dict.get('duration', 0))
-    
+
     context.user_data['pending_download'] = {
         'url': url,
         'info': info_dict
     }
-    
+
     keyboard = [
-        [InlineKeyboardButton("🌟 أفضل جودة", callback_data="quality_best")],
-        [InlineKeyboardButton("📱 جودة متوسطة (أسرع)", callback_data="quality_medium")],
-        [InlineKeyboardButton("🎵 صوت فقط MP3", callback_data="quality_audio")],
+        [InlineKeyboardButton(get_message(lang, 'video_quality_best', '🌟 أفضل جودة'), callback_data="quality_best")],
+        [InlineKeyboardButton(get_message(lang, 'video_quality_medium', '📱 جودة متوسطة (أسرع)'), callback_data="quality_medium")],
+        [InlineKeyboardButton(get_message(lang, 'audio_only', '🎵 صوت فقط MP3'), callback_data="quality_audio")],
     ]
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    message_text = (
-        f"📺 اختر الجودة:\n\n"
-        f"🎬 {title}\n"
-        f"⏱️ {duration}"
+
+    message_text = get_message(lang, 'quality_selection', '📺 اختر الجودة:\n\n🎬 {title}\n⏱️ {duration}').format(
+        title=title,
+        duration=duration
     )
-    
+
     await update.message.reply_text(
         message_text,
         reply_markup=reply_markup
@@ -2853,19 +2852,20 @@ async def handle_batch_download(update: Update, context: ContextTypes.DEFAULT_TY
 async def handle_playlist_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج تحميل playlist YouTube بشكل تفاعلي"""
     user_id = update.effective_user.id
+    lang = get_user_language(user_id)
     url = update.message.text.strip()
 
     # Check if it's a playlist URL
     if not is_playlist_url(url):
-        await update.message.reply_text("⚠️ هذا ليس رابط playlist. استخدم /batch للروابط المتعددة.")
+        await update.message.reply_text(get_message(lang, 'playlist_not_valid', '⚠️ هذا ليس رابط playlist. استخدم /batch للروابط المتعددة.'))
         return
 
     # Check if user has an active download
     if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
-        await update.message.reply_text("⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.")
+        await update.message.reply_text(get_message(lang, 'playlist_active_download', '⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.'))
         return
 
-    progress_msg = await update.message.reply_text("🔍 جاري تحليل قائمة التشغيل...")
+    progress_msg = await update.message.reply_text(get_message(lang, 'playlist_analyzing', '🔍 جاري تحليل قائمة التشغيل...'))
 
     # Track task for cancellation
     async def _playlist_analysis_flow():
@@ -2873,7 +2873,7 @@ async def handle_playlist_download(update: Update, context: ContextTypes.DEFAULT
             playlist_info = await extract_playlist_info(url, progress_msg, user_id)
 
             if not playlist_info:
-                await progress_msg.edit_text("❌ فشل تحليل قائمة التشغيل. تأكد من أن الرابط صحيح.")
+                await progress_msg.edit_text(get_message(lang, 'playlist_analysis_failed', '❌ فشل تحليل قائمة التشغيل. تأكد من أن الرابط صحيح.'))
                 return
 
             total = playlist_info['total']
@@ -2899,22 +2899,22 @@ async def handle_playlist_download(update: Update, context: ContextTypes.DEFAULT
 
             # Add action buttons
             keyboard.append([
-                InlineKeyboardButton("📦 تحميل المحدد", callback_data=f"proceed_selection:{user_id}"),
-                InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")
+                InlineKeyboardButton(get_message(lang, 'playlist_download_selected', '📦 تحميل المحدد'), callback_data=f"proceed_selection:{user_id}"),
+                InlineKeyboardButton(get_message(lang, 'cancel_button', '❌ إلغاء'), callback_data=f"cancel:{user_id}")
             ])
 
             await progress_msg.edit_text(
-                f"✅ تم تحليل **{total} فيديو** من قائمة التشغيل:\n"
-                f"📋 {playlist_info['title'][:50]}\n\n"
-                f"اختر الفيديوهات التي تريد تحميلها:\n"
-                f"(الكل محدد افتراضياً)",
+                get_message(lang, 'playlist_analyzed', '✅ تم تحليل **{total} فيديو** من قائمة التشغيل:\n📋 {title}\n\nاختر الفيديوهات التي تريد تحميلها:\n(الكل محدد افتراضياً)').format(
+                    total=total,
+                    title=playlist_info['title'][:50]
+                ),
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="Markdown"
             )
 
         except asyncio.CancelledError:
             try:
-                await progress_msg.edit_text("❌ تم إلغاء التحليل.")
+                await progress_msg.edit_text(get_message(lang, 'playlist_analysis_cancelled', '❌ تم إلغاء التحليل.'))
             except Exception:
                 pass
             raise
@@ -3139,33 +3139,33 @@ async def proceed_to_quality_selection(update: Update, context: ContextTypes.DEF
     await query.answer()
 
     user_id = int(query.data.split(":")[1])
+    lang = get_user_language(user_id)
 
     if query.from_user.id != user_id:
-        await query.answer("⚠️ هذا ليس طلبك!", show_alert=True)
+        await query.answer(get_message(lang, 'batch_not_your_request', '⚠️ هذا ليس طلبك!'), show_alert=True)
         return
 
     selected = SELECTED_VIDEOS.get(user_id, set())
 
     if not selected:
-        await query.answer("⚠️ يجب اختيار فيديو واحد على الأقل!", show_alert=True)
+        await query.answer(get_message(lang, 'batch_select_at_least_one', '⚠️ يجب اختيار فيديو واحد على الأقل!'), show_alert=True)
         return
 
     playlist_data = PLAYLISTS.get(user_id)
     if not playlist_data:
-        await query.edit_message_text("❌ انتهت صلاحية الطلب.")
+        await query.edit_message_text(get_message(lang, 'batch_request_expired', '❌ انتهت صلاحية الطلب.'))
         return
 
     # Show quality selection
     keyboard = [
-        [InlineKeyboardButton("⭐ أفضل جودة", callback_data=f"batch_quality:best:{user_id}")],
-        [InlineKeyboardButton("📱 جودة متوسطة (أسرع)", callback_data=f"batch_quality:medium:{user_id}")],
-        [InlineKeyboardButton("🎧 صوت فقط (MP3)", callback_data=f"batch_quality:audio:{user_id}")],
-        [InlineKeyboardButton("❌ إلغاء", callback_data=f"cancel:{user_id}")]
+        [InlineKeyboardButton(get_message(lang, 'video_quality_best', '⭐ أفضل جودة'), callback_data=f"batch_quality:best:{user_id}")],
+        [InlineKeyboardButton(get_message(lang, 'video_quality_medium', '📱 جودة متوسطة (أسرع)'), callback_data=f"batch_quality:medium:{user_id}")],
+        [InlineKeyboardButton(get_message(lang, 'batch_quality_audio', '🎧 صوت فقط (MP3)'), callback_data=f"batch_quality:audio:{user_id}")],
+        [InlineKeyboardButton(get_message(lang, 'cancel_button', '❌ إلغاء'), callback_data=f"cancel:{user_id}")]
     ]
 
     await query.edit_message_text(
-        f"✅ تم اختيار **{len(selected)}** فيديو\n\n"
-        f"اختر الجودة:",
+        get_message(lang, 'batch_selected_videos', '✅ تم اختيار **{count}** فيديو\n\nاختر الجودة:').format(count=len(selected)),
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
