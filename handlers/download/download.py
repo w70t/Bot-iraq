@@ -395,6 +395,7 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
 
     # === فحص مدة الفيديو لجميع الأنواع (صوت وفيديو) ===
     user_id = query.from_user.id
+    lang = get_user_language(user_id)
     from database import is_subscribed, is_admin, get_free_time_limit
 
     duration_seconds = info_dict.get('duration', 0)
@@ -484,7 +485,7 @@ async def handle_quality_selection(update: Update, context: ContextTypes.DEFAULT
 
     del context.user_data['pending_download']
 
-    await query.edit_message_text("⏳ جاري التحضير...")
+    await query.edit_message_text(get_message(lang, 'download_preparing', '⏳ جاري التحضير...'))
 
     await download_video_with_quality(update, context, url, info_dict, quality_choice)
 
@@ -1147,7 +1148,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
 
     processing_message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="📥 جاري التحضير...\n⏳ الرجاء الانتظار...",
+        text=get_message(lang, 'download_wait', '📥 جاري التحضير...\n⏳ الرجاء الانتظار...'),
         parse_mode='Markdown'
     )
     
@@ -1301,7 +1302,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 if remaining > 0:
                     await context.bot.send_message(
                         chat_id=update.effective_chat.id,
-                        text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
+                        text=get_message(lang, 'remaining_downloads_message', 'ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم').format(remaining=remaining)
                     )
             
             # حذف الصور المؤقتة
@@ -1678,7 +1679,7 @@ async def perform_download(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             if remaining > 0:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text=f"ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم"
+                    text=get_message(lang, 'remaining_downloads_message', 'ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم').format(remaining=remaining)
                 )
 
         # إرسال سجل للقناة فقط إذا نجح الرفع
@@ -1854,7 +1855,7 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_cached_user_data(user_id, get_user_language)
 
     # رد سريع للمستخدم - تحسين الإحساس بالاستجابة
-    processing_msg = await update.message.reply_text("⏳ جاري المعالجة...")
+    processing_msg = await update.message.reply_text(get_message(lang, 'download_processing', '⏳ جاري المعالجة...'))
 
     # جلب بيانات المستخدم مع التخزين المؤقت
     user_data = get_cached_user_data(user_id, get_user)
@@ -2661,6 +2662,7 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cancel_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إلغاء التحميل الجاري للمستخدم"""
     user_id = update.effective_user.id
+    lang = get_user_language(user_id)
     task = ACTIVE_DOWNLOADS.get(user_id)
 
     if task and not task.done():
@@ -2668,7 +2670,7 @@ async def cancel_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("🛑 طلب الإلغاء تم إرساله. سيتم إيقاف التحميل.")
         logger.info(f"⛔ المستخدم {user_id} ألغى التحميل")
     else:
-        await update.effective_message.reply_text("ℹ️ لا يوجد تحميل جارٍ لحسابك حالياً.")
+        await update.effective_message.reply_text(get_message(lang, 'no_active_download', 'ℹ️ لا يوجد تحميل جارٍ لحسابك حالياً.'))
 
 async def cancel_download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إلغاء التحميل عبر زر inline"""
@@ -2676,6 +2678,7 @@ async def cancel_download_callback(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     user_id = query.from_user.id
+    lang = get_user_language(user_id)
     task = ACTIVE_DOWNLOADS.get(user_id)
 
     if task and not task.done():
@@ -2687,7 +2690,7 @@ async def cancel_download_callback(update: Update, context: ContextTypes.DEFAULT
         PLAYLISTS.pop(user_id, None)
         CANCEL_MESSAGES.pop(user_id, None)
     else:
-        await query.answer("⚠️ لا يوجد تحميل جارٍ حالياً.", show_alert=True)
+        await query.answer(get_message(lang, 'no_active_download_alert', '⚠️ لا يوجد تحميل جارٍ حالياً.'), show_alert=True)
 
 def is_playlist_url(url: str) -> bool:
     """التحقق من أن الرابط هو playlist"""
@@ -2773,10 +2776,11 @@ async def handle_batch_download(update: Update, context: ContextTypes.DEFAULT_TY
     urls = urls[:BATCH_MAX_URLS]
     user_id = update.effective_user.id
     user = update.effective_user
+    lang = get_user_language(user_id)
 
     # Check if user has an active download
     if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
-        await update.message.reply_text("⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.")
+        await update.message.reply_text(get_message(lang, 'download_active', '⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.'))
         return
 
     sem_user = USER_SEMAPHORE[user_id]
@@ -2931,6 +2935,7 @@ async def handle_batch_quality_choice(update: Update, context: ContextTypes.DEFA
     await query.answer()
 
     user_id = query.from_user.id
+    lang = get_user_language(user_id)
     data_parts = query.data.split(":")
     quality = data_parts[1]
 
@@ -2941,7 +2946,7 @@ async def handle_batch_quality_choice(update: Update, context: ContextTypes.DEFA
 
     # Check if user has an active download
     if ACTIVE_DOWNLOADS.get(user_id) and not ACTIVE_DOWNLOADS[user_id].done():
-        await query.answer("⚠️ لديك تحميل جارٍ بالفعل.", show_alert=True)
+        await query.answer(get_message(lang, 'no_active_download_alert', '⚠️ لا يوجد تحميل جارٍ حالياً.'), show_alert=True)
         return
 
     # Get only selected videos
