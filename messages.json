@@ -133,7 +133,15 @@
     "refresh_stats_button": "🔄 تحديث الإحصائيات",
     "stats_refreshed": "✅ تم تحديث الإحصائيات!",
     "referral_link_sent": "✅ تم إرسال الرابط للنسخ!",
-    "account_referral_info": "\n🎁 نظام الإحالة:\n👥 إحالاتك: {count}\n🎨 رصيد بدون لوجو: {credits} فيديو\n💡 استخدم /referral لمزيد من التفاصيل"
+    "account_referral_info": "\n🎁 نظام الإحالة:\n👥 إحالاتك: {count}\n🎨 رصيد بدون لوجو: {credits} فيديو\n💡 استخدم /referral لمزيد من التفاصيل",
+
+    "remaining_downloads_message": "ℹ️ تبقى لك {remaining} تحميلات مجانية اليوم",
+    "download_preparing": "⏳ جاري التحضير...",
+    "download_processing": "⏳ جاري المعالجة...",
+    "download_wait": "📥 جاري التحضير...\n⏳ الرجاء الانتظار...",
+    "download_active": "⚠️ لديك تحميل جارٍ بالفعل. انتظر حتى ينتهي أو استخدم /cancel لإلغائه.",
+    "no_active_download": "ℹ️ لا يوجد تحميل جارٍ لحسابك حالياً.",
+    "no_active_download_alert": "⚠️ لا يوجد تحميل جارٍ حالياً."
   },
   
   "en": {
@@ -270,6 +278,14 @@
     "refresh_stats_button": "🔄 Refresh Stats",
     "stats_refreshed": "✅ Stats refreshed!",
     "referral_link_sent": "✅ Link sent for copying!",
-    "account_referral_info": "\n🎁 Referral System:\n👥 Your referrals: {count}\n🎨 No-logo balance: {credits} videos\n💡 Use /referral for more details"
+    "account_referral_info": "\n🎁 Referral System:\n👥 Your referrals: {count}\n🎨 No-logo balance: {credits} videos\n💡 Use /referral for more details",
+
+    "remaining_downloads_message": "ℹ️ You have {remaining} free downloads remaining today",
+    "download_preparing": "⏳ Preparing...",
+    "download_processing": "⏳ Processing...",
+    "download_wait": "📥 Preparing...\n⏳ Please wait...",
+    "download_active": "⚠️ You have an active download. Wait until it finishes or use /cancel to stop it.",
+    "no_active_download": "ℹ️ You don't have any active downloads.",
+    "no_active_download_alert": "⚠️ No active download currently."
   }
 }

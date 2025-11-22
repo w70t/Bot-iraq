@@ -70,10 +70,11 @@ def prepare_logo_for_processing(logo_path, max_size=500):
                     # إنشاء مسار مؤقت للوجو المصغر
                     temp_logo_path = logo_path.replace('.png', '_resized.png')
 
-                    # تصغير اللوجو مع الحفاظ على نسبة العرض للارتفاع
+                    # تصغير اللوجو مع الحفاظ على نسبة العرض للارتفاع والشفافية
                     resize_cmd = [
                         'ffmpeg', '-y', '-i', logo_path,
-                        '-vf', f'scale={max_size}:{max_size}:force_original_aspect_ratio=decrease',
+                        '-vf', f'scale={max_size}:{max_size}:force_original_aspect_ratio=decrease,format=rgba',
+                        '-pix_fmt', 'rgba',
                         temp_logo_path
                     ]
 
