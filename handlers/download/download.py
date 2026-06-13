@@ -190,21 +190,34 @@ def get_platform_from_url(url: str) -> str:
         return 'unknown'
 
 def is_adult_content(url: str, title: str = "") -> bool:
-    """التحقق من المحتوى الإباحي"""
-    config = get_config()
-    
-    blocked_domains = config.get("BLOCKED_DOMAINS", [])
+    """التحقق من المحتوى الإباحي عبر النطاقات والكلمات المحظورة.
+
+    القوائم وحالة التفعيل تُقرأ من قاعدة البيانات (قابلة للتحكم من لوحة الأدمن)،
+    مع الرجوع إلى config.json كاحتياطي إذا تعذّر الوصول لقاعدة البيانات.
+    """
+    # احترام زر التشغيل/الإيقاف من لوحة الأدمن
+    try:
+        from database import is_content_filter_enabled, get_blocked_domains, get_blocked_keywords
+        if not is_content_filter_enabled():
+            return False
+        blocked_domains = get_blocked_domains()
+        adult_keywords = get_blocked_keywords()
+    except Exception as e:
+        logger.warning(f"⚠️ تعذّر قراءة إعدادات فلتر المحتوى من قاعدة البيانات، استخدام config.json: {e}")
+        config = get_config()
+        blocked_domains = config.get("BLOCKED_DOMAINS", [])
+        adult_keywords = config.get("ADULT_CONTENT_KEYWORDS", [])
+
     for domain in blocked_domains:
         if domain.lower() in url.lower():
             return True
-    
-    adult_keywords = config.get("ADULT_CONTENT_KEYWORDS", [])
+
     text_to_check = (url + " " + title).lower()
-    
+
     for keyword in adult_keywords:
         if keyword.lower() in text_to_check:
             return True
-    
+
     return False
 
 def safe_filename(title: str, max_length: int = 60) -> str:
@@ -1966,10 +1979,25 @@ async def handle_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title = info_dict.get('title', 'فيديو')
         duration = info_dict.get('duration', 0)
-        
+
         if is_adult_content(url, title):
             await processing_message.edit_text("🚫 محتوى محظور!")
             return
+
+        # فحص ذكي: المحتوى المقيّد للبالغين (age_limit) على المنصات العامة
+        # مثل تويتر/تيك توك حيث لا يحتوي الرابط على كلمات صريحة
+        try:
+            from database import is_content_filter_enabled, is_age_limit_check_enabled
+            if is_content_filter_enabled() and is_age_limit_check_enabled():
+                age_limit = info_dict.get('age_limit', 0) or 0
+                if age_limit >= 18:
+                    logger.info(f"🚫 محتوى مقيّد للبالغين (age_limit={age_limit}) - {url}")
+                    await processing_message.edit_text(
+                        "🚫 محتوى محظور!\n\n🔞 تم اكتشاف محتوى مقيّد للبالغين."
+                    )
+                    return
+        except Exception as e:
+            logger.warning(f"⚠️ تعذّر فحص age_limit: {e}")
 
         # التحقق من القيود الزمنية (فقط إذا كان الاشتراك مفعلاً)
         from database import is_subscription_enabled, get_free_time_limit

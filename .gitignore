@@ -58,3 +58,4 @@ videos/
 *.db
 *.sqlite
 *.sqlite3
+cookie_key.json
