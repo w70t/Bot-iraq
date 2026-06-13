@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=3)
 
 # حالات المحادثة
-MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE, AWAITING_CUSTOM_PRICE, AWAITING_AUDIO_LIMIT, AWAITING_TIME_LIMIT, AWAITING_DAILY_LIMIT, AWAITING_USER_ID_BROADCAST, AWAITING_MESSAGE_BROADCAST, AWAITING_PLATFORM_COOKIE = range(11)
+MAIN_MENU, AWAITING_USER_ID, AWAITING_DAYS, BROADCAST_MESSAGE, AWAITING_CUSTOM_PRICE, AWAITING_AUDIO_LIMIT, AWAITING_TIME_LIMIT, AWAITING_DAILY_LIMIT, AWAITING_USER_ID_BROADCAST, AWAITING_MESSAGE_BROADCAST, AWAITING_PLATFORM_COOKIE, AWAITING_CF_DOMAIN, AWAITING_CF_KEYWORD = range(13)
 
 async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالج بسيط جداً لأمر /admin - خارج ConversationHandler تماماً"""
@@ -74,6 +74,9 @@ async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYP
         sub_enabled = is_subscription_enabled()
         sub_status = "✅" if sub_enabled else "🚫"
 
+        from database import is_content_filter_enabled
+        cf_status = "✅" if is_content_filter_enabled() else "🚫"
+
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
             [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
@@ -82,6 +85,7 @@ async def admin_command_simple(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+            [InlineKeyboardButton(f"🔞 فلتر المحتوى ({cf_status})", callback_data="admin_content_filter")],
             [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
             [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
             [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
@@ -144,6 +148,9 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
         sub_enabled = is_subscription_enabled()
         sub_status = "✅" if sub_enabled else "🚫"
 
+        from database import is_content_filter_enabled
+        cf_status = "✅" if is_content_filter_enabled() else "🚫"
+
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
             [InlineKeyboardButton("📥 سجل التحميلات", callback_data="admin_download_logs")],
@@ -152,6 +159,7 @@ async def handle_admin_panel_callback(update: Update, context: ContextTypes.DEFA
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+            [InlineKeyboardButton(f"🔞 فلتر المحتوى ({cf_status})", callback_data="admin_content_filter")],
             [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
             [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
             [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
@@ -264,6 +272,11 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         referral_enabled = is_referral_enabled()
         referral_status = "✅" if referral_enabled else "🚫"
 
+        # جلب حالة فلتر المحتوى الإباحي
+        logger.info(f"📋 [ADMIN_PANEL] Fetching content filter status")
+        from database import is_content_filter_enabled
+        cf_status = "✅" if is_content_filter_enabled() else "🚫"
+
         logger.info(f"📋 [ADMIN_PANEL] Building keyboard")
         keyboard = [
             [InlineKeyboardButton("📊 الإحصائيات", callback_data="admin_stats")],
@@ -274,6 +287,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⚙️ إعدادات القيود العامة", callback_data="admin_general_limits")],
             [InlineKeyboardButton(f"🎨 اللوجو ({logo_text})", callback_data="admin_logo")],
             [InlineKeyboardButton(f"📚 المكتبات ({library_status})", callback_data="admin_libraries")],
+            [InlineKeyboardButton(f"🔞 فلتر المحتوى ({cf_status})", callback_data="admin_content_filter")],
             [InlineKeyboardButton("🧾 بلاغات المستخدمين", callback_data="admin_error_reports")],
             [InlineKeyboardButton("👥 قائمة الأعضاء", callback_data="admin_list_users")],
             [InlineKeyboardButton("📢 إرسال رسالة جماعية", callback_data="admin_broadcast")],
@@ -3548,6 +3562,282 @@ async def send_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return MAIN_MENU
 
 
+# ═══════════════════════════════════════════════════════════════
+#  Content Filter (Adult / NSFW) Control
+# ═══════════════════════════════════════════════════════════════
+
+async def show_content_filter_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض لوحة التحكم بفلتر المحتوى الإباحي"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import (
+        is_content_filter_enabled,
+        is_age_limit_check_enabled,
+        get_blocked_domains,
+        get_blocked_keywords,
+    )
+
+    enabled = is_content_filter_enabled()
+    age_check = is_age_limit_check_enabled()
+    domains_count = len(get_blocked_domains())
+    keywords_count = len(get_blocked_keywords())
+
+    status_text = "✅ مفعّل" if enabled else "🚫 معطّل"
+    age_text = "✅ مفعّل" if age_check else "🚫 معطّل"
+
+    text = (
+        "🔞 **فلتر المحتوى الإباحي**\n\n"
+        f"📊 **الحالة:** {status_text}\n"
+        f"🧠 **فحص المحتوى المقيّد للبالغين (age_limit):** {age_text}\n"
+        f"🌐 **النطاقات المحظورة:** {domains_count}\n"
+        f"🔤 **الكلمات المحظورة:** {keywords_count}\n\n"
+        "💡 عند التفعيل، يُرفض أي رابط يطابق نطاقاً أو كلمة محظورة، "
+        "كما يُرفض المحتوى المقيّد للبالغين على المنصات العامة (مثل تويتر/تيك توك).\n\n"
+        "اختر الإجراء المطلوب:"
+    )
+
+    toggle_button = (
+        InlineKeyboardButton("🚫 تعطيل الفلتر", callback_data="cf_toggle")
+        if enabled else
+        InlineKeyboardButton("✅ تفعيل الفلتر", callback_data="cf_toggle")
+    )
+    age_button = (
+        InlineKeyboardButton("🚫 تعطيل فحص age_limit", callback_data="cf_toggle_age")
+        if age_check else
+        InlineKeyboardButton("✅ تفعيل فحص age_limit", callback_data="cf_toggle_age")
+    )
+
+    keyboard = [
+        [toggle_button],
+        [age_button],
+        [InlineKeyboardButton(f"🌐 النطاقات المحظورة ({domains_count})", callback_data="cf_view_domains")],
+        [InlineKeyboardButton(f"🔤 الكلمات المحظورة ({keywords_count})", callback_data="cf_view_keywords")],
+        [InlineKeyboardButton("↩️ العودة", callback_data="admin_back")]
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+
+    return MAIN_MENU
+
+
+async def cf_toggle_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبديل حالة فلتر المحتوى"""
+    query = update.callback_query
+
+    from database import is_content_filter_enabled, set_content_filter_enabled
+    new_state = not is_content_filter_enabled()
+    set_content_filter_enabled(new_state)
+
+    await query.answer(
+        "✅ تم تفعيل الفلتر" if new_state else "🚫 تم تعطيل الفلتر",
+        show_alert=True
+    )
+    return await show_content_filter_panel(update, context)
+
+
+async def cf_toggle_age(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبديل حالة فحص age_limit"""
+    query = update.callback_query
+
+    from database import is_age_limit_check_enabled, set_age_limit_check_enabled
+    new_state = not is_age_limit_check_enabled()
+    set_age_limit_check_enabled(new_state)
+
+    await query.answer(
+        "✅ تم تفعيل فحص age_limit" if new_state else "🚫 تم تعطيل فحص age_limit",
+        show_alert=True
+    )
+    return await show_content_filter_panel(update, context)
+
+
+async def cf_view_domains(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة النطاقات المحظورة مع أزرار الحذف"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_blocked_domains
+    domains = get_blocked_domains()
+
+    if domains:
+        listed = "\n".join(f"{i + 1}. `{d}`" for i, d in enumerate(domains))
+    else:
+        listed = "_لا توجد نطاقات محظورة_"
+
+    text = (
+        "🌐 **النطاقات المحظورة**\n\n"
+        f"{listed}\n\n"
+        "اضغط على نطاق لحذفه، أو أضف نطاقاً جديداً:"
+    )
+
+    keyboard = [[InlineKeyboardButton("➕ إضافة نطاق", callback_data="cf_add_domain")]]
+    # زر حذف لكل نطاق (نستخدم الفهرس لتجنّب حدود طول callback_data)
+    for i, d in enumerate(domains):
+        keyboard.append([InlineKeyboardButton(f"🗑️ {d}", callback_data=f"cf_rm_dom:{i}")])
+    keyboard.append([InlineKeyboardButton("↩️ العودة", callback_data="admin_content_filter")])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+    return MAIN_MENU
+
+
+async def cf_view_keywords(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة الكلمات المحظورة مع أزرار الحذف"""
+    query = update.callback_query
+    await query.answer()
+
+    from database import get_blocked_keywords
+    keywords = get_blocked_keywords()
+
+    if keywords:
+        listed = "\n".join(f"{i + 1}. `{k}`" for i, k in enumerate(keywords))
+    else:
+        listed = "_لا توجد كلمات محظورة_"
+
+    text = (
+        "🔤 **الكلمات المحظورة**\n\n"
+        f"{listed}\n\n"
+        "اضغط على كلمة لحذفها، أو أضف كلمة جديدة:"
+    )
+
+    keyboard = [[InlineKeyboardButton("➕ إضافة كلمة", callback_data="cf_add_keyword")]]
+    for i, k in enumerate(keywords):
+        keyboard.append([InlineKeyboardButton(f"🗑️ {k}", callback_data=f"cf_rm_kw:{i}")])
+    keyboard.append([InlineKeyboardButton("↩️ العودة", callback_data="admin_content_filter")])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+    return MAIN_MENU
+
+
+async def cf_remove_domain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف نطاق محظور بالفهرس"""
+    query = update.callback_query
+
+    from database import get_blocked_domains, remove_blocked_domain
+
+    try:
+        idx = int(query.data.split(':', 1)[1])
+        domains = get_blocked_domains()
+        domain = domains[idx]
+    except (ValueError, IndexError):
+        await query.answer("❌ النطاق لم يعد موجوداً", show_alert=True)
+        return await cf_view_domains(update, context)
+
+    success, msg = remove_blocked_domain(domain)
+    await query.answer(f"✅ تم حذف: {domain}" if success else f"❌ {msg}", show_alert=True)
+    return await cf_view_domains(update, context)
+
+
+async def cf_remove_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف كلمة محظورة بالفهرس"""
+    query = update.callback_query
+
+    from database import get_blocked_keywords, remove_blocked_keyword
+
+    try:
+        idx = int(query.data.split(':', 1)[1])
+        keywords = get_blocked_keywords()
+        keyword = keywords[idx]
+    except (ValueError, IndexError):
+        await query.answer("❌ الكلمة لم تعد موجودة", show_alert=True)
+        return await cf_view_keywords(update, context)
+
+    success, msg = remove_blocked_keyword(keyword)
+    await query.answer(f"✅ تم حذف: {keyword}" if success else f"❌ {msg}", show_alert=True)
+    return await cf_view_keywords(update, context)
+
+
+async def cf_add_domain_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء إضافة نطاق محظور"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "➕ **إضافة نطاق محظور**\n\n"
+        "أرسل النطاق المراد حظره.\n"
+        "مثال: `example.com`\n\n"
+        "💡 سيُحظر أي رابط يحتوي على هذا النطاق."
+    )
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cf_view_domains")]]
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+    return AWAITING_CF_DOMAIN
+
+
+async def cf_add_keyword_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء إضافة كلمة محظورة"""
+    query = update.callback_query
+    await query.answer()
+
+    text = (
+        "➕ **إضافة كلمة محظورة**\n\n"
+        "أرسل الكلمة المراد حظرها.\n"
+        "مثال: `nsfw`\n\n"
+        "💡 سيُحظر أي رابط أو عنوان يحتوي على هذه الكلمة."
+    )
+    keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="cf_view_keywords")]]
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='Markdown'
+    )
+    return AWAITING_CF_KEYWORD
+
+
+async def cf_receive_domain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال النطاق الجديد وإضافته"""
+    from database import add_blocked_domain
+    domain = update.message.text.strip()
+
+    success, msg = add_blocked_domain(domain)
+    result = f"✅ تمت إضافة النطاق: {domain.lower()}" if success else f"⚠️ {msg}"
+
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة نطاق آخر", callback_data="cf_add_domain")],
+        [InlineKeyboardButton("🌐 عرض النطاقات", callback_data="cf_view_domains")],
+        [InlineKeyboardButton("↩️ العودة للفلتر", callback_data="admin_content_filter")]
+    ]
+    await update.message.reply_text(
+        result,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return MAIN_MENU
+
+
+async def cf_receive_keyword(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال الكلمة الجديدة وإضافتها"""
+    from database import add_blocked_keyword
+    keyword = update.message.text.strip()
+
+    success, msg = add_blocked_keyword(keyword)
+    result = f"✅ تمت إضافة الكلمة: {keyword.lower()}" if success else f"⚠️ {msg}"
+
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة كلمة أخرى", callback_data="cf_add_keyword")],
+        [InlineKeyboardButton("🔤 عرض الكلمات", callback_data="cf_view_keywords")],
+        [InlineKeyboardButton("↩️ العودة للفلتر", callback_data="admin_content_filter")]
+    ]
+    await update.message.reply_text(
+        result,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return MAIN_MENU
+
+
 async def admin_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """العودة للقائمة الرئيسية"""
     return await admin_panel(update, context)
@@ -3633,6 +3923,16 @@ admin_conv_handler = ConversationHandler(
             CallbackQueryHandler(show_error_reports_panel, pattern='^admin_error_reports$'),
             CallbackQueryHandler(handle_resolve_report, pattern='^resolve_report:'),
             CallbackQueryHandler(handle_confirm_resolve, pattern='^confirm_resolve:'),
+            # Content Filter (Adult / NSFW)
+            CallbackQueryHandler(show_content_filter_panel, pattern='^admin_content_filter$'),
+            CallbackQueryHandler(cf_toggle_filter, pattern='^cf_toggle$'),
+            CallbackQueryHandler(cf_toggle_age, pattern='^cf_toggle_age$'),
+            CallbackQueryHandler(cf_view_domains, pattern='^cf_view_domains$'),
+            CallbackQueryHandler(cf_view_keywords, pattern='^cf_view_keywords$'),
+            CallbackQueryHandler(cf_add_domain_start, pattern='^cf_add_domain$'),
+            CallbackQueryHandler(cf_add_keyword_start, pattern='^cf_add_keyword$'),
+            CallbackQueryHandler(cf_remove_domain, pattern='^cf_rm_dom:'),
+            CallbackQueryHandler(cf_remove_keyword, pattern='^cf_rm_kw:'),
             # General Limits Control
             CallbackQueryHandler(show_general_limits_panel, pattern='^admin_general_limits$'),
             CallbackQueryHandler(handle_edit_time_limit, pattern='^edit_time_limit$'),
@@ -3706,6 +4006,18 @@ admin_conv_handler = ConversationHandler(
         ],
         AWAITING_PLATFORM_COOKIE: [
             MessageHandler(filters.Document.ALL, receive_platform_cookie_file),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_CF_DOMAIN: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, cf_receive_domain),
+            CallbackQueryHandler(cf_view_domains, pattern='^cf_view_domains$'),
+            CallbackQueryHandler(show_content_filter_panel, pattern='^admin_content_filter$'),
+            CallbackQueryHandler(admin_back, pattern='^admin_back$'),
+        ],
+        AWAITING_CF_KEYWORD: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, cf_receive_keyword),
+            CallbackQueryHandler(cf_view_keywords, pattern='^cf_view_keywords$'),
+            CallbackQueryHandler(show_content_filter_panel, pattern='^admin_content_filter$'),
             CallbackQueryHandler(admin_back, pattern='^admin_back$'),
         ],
     },

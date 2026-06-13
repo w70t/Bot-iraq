@@ -131,7 +131,18 @@ from .settings import (
     set_free_time_limit,
     get_free_time_limit,
     set_daily_download_limit,
-    get_daily_download_limit_setting
+    get_daily_download_limit_setting,
+    get_content_filter_settings,
+    is_content_filter_enabled,
+    set_content_filter_enabled,
+    is_age_limit_check_enabled,
+    set_age_limit_check_enabled,
+    get_blocked_domains,
+    get_blocked_keywords,
+    add_blocked_domain,
+    remove_blocked_domain,
+    add_blocked_keyword,
+    remove_blocked_keyword
 )
 
 __all__ = [
@@ -246,5 +257,18 @@ __all__ = [
     'set_free_time_limit',
     'get_free_time_limit',
     'set_daily_download_limit',
-    'get_daily_download_limit_setting'
+    'get_daily_download_limit_setting',
+
+    # Content Filter (Adult / NSFW)
+    'get_content_filter_settings',
+    'is_content_filter_enabled',
+    'set_content_filter_enabled',
+    'is_age_limit_check_enabled',
+    'set_age_limit_check_enabled',
+    'get_blocked_domains',
+    'get_blocked_keywords',
+    'add_blocked_domain',
+    'remove_blocked_domain',
+    'add_blocked_keyword',
+    'remove_blocked_keyword'
 ]
